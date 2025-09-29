@@ -192,13 +192,25 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
   fi
 
   # Build the JSON payload.
+  if [ "$private_flag" = "true" ]; then
+    github_repo_url="$html_url"
+    auth_fields=$(jq -n \
+      --arg user "$GITHUB_USER" \
+      --arg pass "$GITHUB_TOKEN" \
+      '{auth_username: $user, auth_password: $pass}')
+  else
+    github_repo_url="$html_url"
+    auth_fields="{}"
+  fi
+  
   payload=$(jq -n \
     --arg addr "$github_repo_url" \
     --argjson mirror "$mirror" \
     --argjson private "$private_flag" \
     --arg owner "$FORGEJO_USER" \
     --arg repo "$repo_name" \
-    '{clone_addr: $addr, mirror: $mirror, private: $private, repo_owner: $owner, repo_name: $repo}')
+    --argjson auth "$auth_fields" \
+    '$auth + {clone_addr: $addr, mirror: $mirror, private: $private, repo_owner: $owner, repo_name: $repo}')
 
   # Send the POST request to the Forgejo migration endpoint.
   response=$(curl -s -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$payload" "$FORGEJO_URL/api/v1/repos/migrate")
