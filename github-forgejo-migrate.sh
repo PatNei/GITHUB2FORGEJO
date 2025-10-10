@@ -55,6 +55,7 @@ or_default() {
 
 # Get configuration from the environment or via prompt.
 GITHUB_USER=$(or_default "$GITHUB_USER" "${red}GitHub username:${reset}" "")
+GITHUB_ORG=$(or_default "$GITHUB_ORG" "${red}GitHub organisation:${reset}" "")
 GITHUB_TOKEN=$(or_default "$GITHUB_TOKEN" "${red}GitHub access token (optional, only used for private repositories):${reset}" "")
 FORGEJO_URL=$(or_default "$FORGEJO_URL" "${green}Forgejo instance URL (with https://):${reset}" "")
 # Remove any trailing slash.
@@ -85,6 +86,7 @@ else
 fi
 
 echo -e "${green}Force sync is set to: ${FORCE_SYNC}${reset}"
+
 # -------------------------
 # 1. Fetch GitHub Repositories via API (paginated)
 # -------------------------
@@ -93,14 +95,24 @@ page=1
 
 while true; do
   if [ -n "$GITHUB_TOKEN" ]; then
-    response=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/user/repos?per_page=100&page=$page")
+    if [ -n "$GITHUB_ORG" ]; then
+      response=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/orgs/$GITHUB_ORG/repos?per_page=100&page=$page")
+    else
+      response=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/user/repos?per_page=100&page=$page")
+    fi
   else
     response=$(curl -s "https://api.github.com/users/$GITHUB_USER/repos?per_page=100&page=$page")
   fi
 
   # Filter repos so that only those whose owner.login matches GITHUB_USER are selected.
-  filtered=$(echo "$response" | jq --arg gu "$GITHUB_USER" '[.[] | select(.owner.login == $gu)]')
-  count=$(echo "$filtered" | jq 'length')
+  if [ -n "$GITHUB_USER" ]; then
+    filtered=$(echo "$response" | jq --arg gu "$GITHUB_USER" '[.[] | select(.owner.login == $gu)]')
+  else
+    filtered=$response
+  fi
+
+  #
+  count=$(echo "$response" | jq 'length')
   if [ "$count" -eq 0 ]; then
     break
   fi
@@ -134,8 +146,7 @@ if $FORCE_SYNC; then
   if [ "$count_forgejo" -gt 0 ]; then
     # Iterate over each Forgejo mirrored repo.
     echo "$forgejo_mirrored" | jq -c '.[]' | while read -r repo; do
-      repo_name=$(echo "$repo" | jq -r '.name')
-      full_name=$(echo "$repo" | jq -r '.full_name')
+      read repo_name ull_name <<<$(jq -r '[ .name, .full_name ] | @tsv' <<< ${repo} )
       # If this repo name is not present in the GitHub repos list, delete it.
       if ! echo "$github_repo_names" | grep -Fxq "$repo_name"; then
         echo -ne "${red}Deleting ${yellow}$FORGEJO_URL/$full_name${red} because the mirror source doesn't exist on GitHub anymore...${reset}"
@@ -157,10 +168,7 @@ fi
 
 # Process each GitHub repo
 echo "$all_repos" | jq -c '.[]' | while read -r repo; do
-  repo_name=$(echo "$repo" | jq -r '.name')
-  html_url=$(echo "$repo" | jq -r '.html_url')
-  private_flag=$(echo "$repo" | jq -r '.private')
-  full_name=$(echo "$repo" | jq -r '.full_name')
+  read repo_name html_url private_flag full_name archived <<< $(jq -r '[ .name, .html_url, .private, .full_name, .archived] | @tsv' <<< ${repo} )
 
   # Prepare status message.
   # Capitalize the strategy for display.
@@ -175,7 +183,7 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
   # Determine which clone address to use.
   if [ "$private_flag" = "true" ]; then
     if [ -n "$GITHUB_TOKEN" ]; then
-      github_repo_url="https://$GITHUB_TOKEN@github.com/$full_name"
+      github_repo_url="https://github.com/$full_name"
     else
       echo -e " ${red}Error: Private repo but no GitHub token provided!${reset}"
       continue
@@ -185,7 +193,7 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
   fi
 
   # Set mirror flag for the migration API:
-  if [ "$STRATEGY" = "clone" ]; then
+  if [ "$archived" = "true" -o "$STRATEGY" = "clone" ]; then
     mirror=false
   else
     mirror=true
@@ -198,11 +206,12 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
     --argjson private "$private_flag" \
     --arg owner "$FORGEJO_USER" \
     --arg repo "$repo_name" \
-    '{clone_addr: $addr, mirror: $mirror, private: $private, repo_owner: $owner, repo_name: $repo}')
+    --arg auth_token "$GITHUB_TOKEN" \
+    '{clone_addr: $addr, mirror: $mirror, private: $private, repo_owner: $owner, repo_name: $repo, auth_token: $auth_token }')
 
   # Send the POST request to the Forgejo migration endpoint.
   response=$(curl -s -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$payload" "$FORGEJO_URL/api/v1/repos/migrate")
-  error_message=$(echo "$response" | jq -r '.message // empty')
+  error_message=$(jq -r '.message // empty' <<< $response)
 
   if [[ "$error_message" == *"already exists"* ]]; then
     echo -e " ${yellow}Already mirrored!${reset}"
@@ -210,5 +219,16 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
     echo -e " ${red}Unknown error: $error_message${reset}"
   else
     echo -e " ${green}Success!${reset}"
+  fi
+  if [ "$archived" = "true" ]; then
+    response=$(curl -s -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -XPATCH -d "{ \"archived\": true }" "$FORGEJO_URL/api/v1/repos/$FORGEJO_USER/$repo_name")
+    error_message=$(echo "$response" | jq -r '.message // empty')
+    if [[ "$error_message" == *"cannot archive/un-archive"* ]]; then
+      echo -e " ${yellow}mirrored repo cannot be archived use Web UI to convert it before${reset}"
+    elif [ -n "$error_message" ]; then
+      echo -e " ${red}Unknown error: $error_message${reset}"
+    else
+      echo -e " ${green}Archived!${reset}"
+    fi
   fi
 done
