@@ -106,13 +106,13 @@ while true; do
 
   # Filter repos so that only those whose owner.login matches GITHUB_USER are selected.
   if [ -n "$GITHUB_USER" ]; then
-    filtered=$(echo "$response" | jq --arg gu "$GITHUB_USER" '[.[] | select(.owner.login == $gu)]')
+    filtered=$(jq --arg gu "$GITHUB_USER" '[.[] | select(.owner.login == $gu)]' <<< $response)
   else
     filtered=$response
   fi
 
   #
-  count=$(echo "$response" | jq 'length')
+  count=$(jq 'length' <<< $response)
   if [ "$count" -eq 0 ]; then
     break
   fi
@@ -130,19 +130,19 @@ done
 # -------------------------
 if $FORCE_SYNC; then
   # Get GitHub repo names into a plain list.
-  github_repo_names=$(echo "$all_repos" | jq -r '.[].name')
+  github_repo_names=$(jq -r '.[].name' <<< $all_repos)
 
   # Fetch Forgejo repos.
   forgejo_response=$(curl -s -H "Authorization: token $FORGEJO_TOKEN" "$FORGEJO_URL/api/v1/user/repos")
 
   # Filter to only those repos created via mirror; if no GitHub token provided, also filter out private repos.
   if [ -z "$GITHUB_TOKEN" ]; then
-    forgejo_mirrored=$(echo "$forgejo_response" | jq '[.[] | select(.mirror == true and .private == false)]')
+    forgejo_mirrored=$(jq '[.[] | select(.mirror == true and .private == false)]' <<<"$forgejo_response")
   else
-    forgejo_mirrored=$(echo "$forgejo_response" | jq '[.[] | select(.mirror == true)]')
+    forgejo_mirrored=$(jq '[.[] | select(.mirror == true)]' <<<"$forgejo_response")
   fi
 
-  count_forgejo=$(echo "$forgejo_mirrored" | jq 'length')
+  count_forgejo=$(jq 'length' <<<"$forgejo_mirrored")
   if [ "$count_forgejo" -gt 0 ]; then
     # Iterate over each Forgejo mirrored repo.
     echo "$forgejo_mirrored" | jq -c '.[]' | while read -r repo; do
@@ -160,14 +160,14 @@ fi
 # -------------------------
 # 3. Migrate each GitHub repository to Forgejo.
 # -------------------------
-repo_count=$(echo "$all_repos" | jq 'length')
+repo_count=$(jq 'length' <<<"$all_repos")
 if [ "$repo_count" -eq 0 ]; then
   echo "No repositories found for user $GITHUB_USER."
   exit 0
 fi
 
 # Process each GitHub repo
-echo "$all_repos" | jq -c '.[]' | while read -r repo; do
+jq -c '.[]' <<< "$all_repos" | while read -r repo; do
   read repo_name html_url private_flag full_name archived <<< $(jq -r '[ .name, .html_url, .private, .full_name, .archived] | @tsv' <<< ${repo} )
 
   # Prepare status message.
@@ -222,7 +222,7 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
   fi
   if [ "$archived" = "true" ]; then
     response=$(curl -s -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -XPATCH -d "{ \"archived\": true }" "$FORGEJO_URL/api/v1/repos/$FORGEJO_USER/$repo_name")
-    error_message=$(echo "$response" | jq -r '.message // empty')
+    error_message=$(jq -r '.message // empty' <<<"$response")
     if [[ "$error_message" == *"cannot archive/un-archive"* ]]; then
       echo -e " ${yellow}mirrored repo cannot be archived use Web UI to convert it before${reset}"
     elif [ -n "$error_message" ]; then
