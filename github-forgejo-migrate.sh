@@ -12,6 +12,15 @@
 #   FORCE_SYNC: Whether to delete repositories on Forgejo that no longer exist on GitHub.
 #              Answer Yes (to delete) or No.
 
+# Optionally load environment variables from a .env file located next to this script.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  # Export all variables defined in .env
+  set -a
+  . "$SCRIPT_DIR/.env"
+  set +a
+fi
+
 # Define some color codes for output.
 red=$(tput setaf 1)
 green=$(tput setaf 2)
@@ -189,7 +198,9 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
   # Determine which clone address to use.
   if [ "$private_flag" = "true" ]; then
     if [ -n "$GITHUB_TOKEN" ]; then
-      github_repo_url="https://$GITHUB_TOKEN@github.com/$full_name"
+      # Forgejo rejects clone URLs that contain credentials.
+      # Use the plain GitHub URL here and pass the token separately via the migration payload.
+      github_repo_url="$html_url"
     else
       echo -e " ${red}Error: Private repo but no GitHub token provided!${reset}"
       continue
@@ -206,13 +217,17 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
   fi
 
   # Build the JSON payload.
+  # Newer Forgejo versions do not allow credentials in the clone URL.
+  # Instead, pass the GitHub token (if any) as an auth_token field.
   payload=$(jq -n \
     --arg addr "$github_repo_url" \
     --argjson mirror "$mirror" \
     --argjson private "$private_flag" \
     --arg owner "$FORGEJO_USER" \
     --arg repo "$repo_name" \
-    '{clone_addr: $addr, mirror: $mirror, private: $private, repo_owner: $owner, repo_name: $repo}')
+    --arg token "$GITHUB_TOKEN" \
+    '{clone_addr: $addr, mirror: $mirror, private: $private, repo_owner: $owner, repo_name: $repo}
+     + (if $token != "" then {auth_token: $token} else {} end)')
 
   # Send the POST request to the Forgejo migration endpoint.
   response=$(curl -s -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$payload" "$FORGEJO_URL/api/v1/repos/migrate")
