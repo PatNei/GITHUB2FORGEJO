@@ -22,6 +22,20 @@ purple=$(tput setaf 5)
 white=$(tput setaf 7)
 reset=$(tput sgr0)
 
+# Additional check to verify commands are installed as described in the documentation.
+command_exists() {
+    if command -v "$1" >/dev/null 2>&1; then
+        printf "${green}Checking Prerequisite: $1 is: Installed!\n"
+    else
+        printf "${yellow}%b$1 is not installed...%b\n"
+        exit 1
+    fi
+}
+
+command_exists bash
+command_exists curl
+command_exists jq
+
 # Function: if the passed variable is empty, prompt the user.
 # The function trims white space from the input.
 # Two display strings are provided:

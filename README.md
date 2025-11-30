@@ -40,6 +40,30 @@ You will be prompted for required values unless you provide them via environment
 | `STRATEGY`      | Either `mirror` (default) or `clone`                                        |
 | `FORCE_SYNC`    | Set to `Yes` to delete Forgejo repos that no longer exist on GitHub         |
 
+### Generate `GITHUB_TOKEN`
+
+1. Navigate to GitHub
+2. Click your profile at the top right
+3. Click `Settings`
+4. Scroll down to the bottom of the left menu
+5. Click `Developer settings`
+6. Click `Tokens (classic)`
+7. Click `Generate new token -> Generate new token(classic)`
+8. Select scopes:
+    repo: all
+9. Either enter when prompted or save to GITHUB_TOKEN w/ `export GITHUB_TOKEN=<Your token here>`
+
+### Generate `FORGEJO_TOKEN`
+
+1. Navigate to Forgejo
+2. Click your profile at the top right
+3. Click `Settings`
+4. Click `Applications` on the left
+5. Generate a token
+    5a. Expand the select permissions
+    5b. Set `repository` to `Read and Write`
+6. Either enter when prompted or save to FORGEJO_TOKEN w/ `export FORGEJO_TOKEN=<Your token here>`
+
 ## What It Does
 
 1. Fetches all repositories belonging to the specified GitHub user.
