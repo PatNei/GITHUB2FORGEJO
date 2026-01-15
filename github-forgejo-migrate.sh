@@ -3,6 +3,7 @@
 # It requires curl and jq to be installed.
 # Environment variables (if not provided, you will be prompted):
 #   GITHUB_USER: The GitHub username.
+#   GITHUB_IS_ORG: Whether the GitHub user is an organization (Yes/No).
 #   GITHUB_TOKEN: An access token for private GitHub repositories (optional).
 #   FORGEJO_URL: The Forgejo instance URL (include the protocol, e.g. https://forgejo.example.com).
 #   FORGEJO_USER: The Forgejo user/organization to migrate to.
@@ -73,6 +74,37 @@ if [ -z "$GITHUB_USER" ]; then
   echo -e "${red}Error: GITHUB_USER is required.${reset}" >&2
   exit 1
 fi
+
+# Auto-detect GITHUB_IS_ORG if not provided
+if [ -z "$GITHUB_IS_ORG" ]; then
+  echo -ne "${cyan}Checking account type for $GITHUB_USER...${reset}"
+  # Use token if available to avoid rate limits
+  auth_header=""
+  if [ -n "$GITHUB_TOKEN" ]; then
+    auth_header="Authorization: token $GITHUB_TOKEN"
+  fi
+  
+  api_response=$(curl -s -H "$auth_header" "https://api.github.com/users/$GITHUB_USER")
+  account_type=$(echo "$api_response" | jq -r '.type')
+  
+  if [[ "$account_type" == "Organization" ]]; then
+    GITHUB_IS_ORG=true
+    echo -e " ${green}Organization detected.${reset}"
+  else
+    GITHUB_IS_ORG=false
+    echo -e " ${green}User detected.${reset}"
+  fi
+else
+  printf "%b found in environment, using: %s%b\n" "${cyan}Is the GitHub user an organization? (Yes/No):${reset}" "$GITHUB_IS_ORG" "${reset}" >&2
+  # Clean up user input if provided manually
+  GITHUB_IS_ORG="$(echo "$GITHUB_IS_ORG" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
+  if [[ "$GITHUB_IS_ORG" =~ ^y(es)?$ ]] || [[ "$GITHUB_IS_ORG" == "true" ]]; then
+    GITHUB_IS_ORG=true
+  else
+    GITHUB_IS_ORG=false
+  fi
+fi
+
 GITHUB_TOKEN=$(or_default "$GITHUB_TOKEN" "${red}GitHub access token (optional, only used for private repositories):${reset}" "")
 FORGEJO_URL=$(or_default "$FORGEJO_URL" "${green}Forgejo instance URL (with https://):${reset}" "")
 # Remove any trailing slash.
@@ -109,12 +141,23 @@ echo -e "${green}Force sync is set to: ${FORCE_SYNC}${reset}"
 all_repos="[]" # will hold a JSON array of repos
 page=1
 
+# Determine API endpoint and headers once
+repo_base_url="https://api.github.com/users/$GITHUB_USER/repos"
+curl_opts=(-s)
+
+# Use authenticated user endpoint if token exists (and not overridden by Org)
+if [ -n "$GITHUB_TOKEN" ]; then
+  curl_opts+=(-H "Authorization: token $GITHUB_TOKEN")
+  repo_base_url="https://api.github.com/user/repos"
+fi
+
+# If Organization, force Org endpoint
+if $GITHUB_IS_ORG; then
+  repo_base_url="https://api.github.com/orgs/$GITHUB_USER/repos"
+fi
+
 while true; do
-  if [ -n "$GITHUB_TOKEN" ]; then
-    response=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/user/repos?per_page=100&page=$page")
-  else
-    response=$(curl -s "https://api.github.com/users/$GITHUB_USER/repos?per_page=100&page=$page")
-  fi
+  response=$(curl "${curl_opts[@]}" "$repo_base_url?per_page=100&page=$page")
 
   # Check for API error messages
   if echo "$response" | jq -e 'if type == "object" and .message then true else false end' >/dev/null; then

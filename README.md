@@ -2,12 +2,13 @@
 
 # GitHub ➡️ Forgejo Migration Script in Bash
 
-This is a Bash script for migrating **all repositories** from a GitHub user account to a specified Forgejo instance.
+This is a Bash script for migrating **all repositories** from a GitHub user or organization account to a specified Forgejo instance.
 It supports **mirroring** or one-time **cloning** and includes a cleanup feature for removing repositories on Forgejo that no longer exist on GitHub.
 
 ## Features
 
-- Migrates all repositories for a GitHub user.
+- Migrates all repositories for a GitHub user or organization.
+- **Smart Detection**: Automatically detects if the account is a User or Organization.
 - Supports both **public** and **private** repositories.
 - **Mirror mode**: repositories stay in sync with GitHub.
 - **Clone mode**: one-time copy without ongoing sync.
@@ -36,8 +37,9 @@ You will be prompted for required values unless you provide them via environment
 
 | Variable        | Description                                                                 |
 |----------------|-----------------------------------------------------------------------------|
-| `GITHUB_USER`   | GitHub username                                                             |
-| `GITHUB_TOKEN`  | GitHub access token (required for private repos)                            |
+| `GITHUB_USER`   | GitHub username or organization name                                        |
+| `GITHUB_IS_ORG` | (Optional) Force account type (`Yes`/`No`). Auto-detected if omitted.       |
+| `GITHUB_TOKEN`  | GitHub access token. **Required for private repos or Organizations.**       |
 | `FORGEJO_URL`   | Full URL to your Forgejo instance (e.g., `https://forgejo.example.com`)     |
 | `FORGEJO_USER`  | Forgejo username or organization to own the migrated repos                  |
 | `FORGEJO_TOKEN` | Forgejo personal access token                                               |
@@ -74,6 +76,9 @@ If you want to test the script without setting up a real Forgejo instance, you c
 
 You can use either a **Fine-grained token** (recommended) or a **Classic token**.
 
+> [!IMPORTANT]
+> **For Organizations**: To migrate private repositories belonging to an organization, your token must have sufficient permissions. For Fine-grained tokens, ensure the **Resource owner** is set to the specific organization if your personal token doesn't grant access.
+
 #### Fine-grained Token (Recommended)
 1. Go to `Settings` -> `Developer settings` -> `Personal access tokens` -> `Fine-grained tokens`.
 2. Click `Generate new token`.
@@ -103,9 +108,10 @@ You can use either a **Fine-grained token** (recommended) or a **Classic token**
 
 ## What It Does
 
-1. Fetches all repositories belonging to the specified GitHub user.
-2. (Optional) Deletes any Forgejo mirrored repositories that no longer have a source on GitHub.
-3. Migrates each repository to Forgejo using the selected strategy (`mirror` or `clone`).
+1. **Account Auto-Detection**: Checks if the specified GitHub account is a User or an Organization (can be overridden via `GITHUB_IS_ORG`).
+2. **Repository Discovery**: Fetches all repositories belonging to the target account.
+3. **Cleanup (Optional)**: Deletes any Forgejo mirrored repositories that no longer have a source on GitHub.
+4. **Migration**: Migrates each repository to Forgejo using the selected strategy (`mirror` or `clone`).
 
 ## FAQ
 
