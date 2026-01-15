@@ -19,8 +19,12 @@ It supports **mirroring** or one-time **cloning** and includes a cleanup feature
 - `bash`
 - `curl`
 - `jq`
+- `docker` (optional, for development environment)
+- `direnv` (optional, for automated configuration)
 
 ## Usage
+
+### 1. Manual Approach
 
 You can run the script directly:
 
@@ -40,18 +44,51 @@ You will be prompted for required values unless you provide them via environment
 | `STRATEGY`      | Either `mirror` (default) or `clone`                                        |
 | `FORCE_SYNC`    | Set to `Yes` to delete Forgejo repos that no longer exist on GitHub         |
 
+### 2. Automated Development & Testing Environment
+
+If you want to test the script without setting up a real Forgejo instance, you can use the provided Docker environment.
+
+1.  **Configure Environment**:
+    Create a `.env` file (or use `direnv` with the provided `.envrc`):
+    ```bash
+    cp .envrc.example .env
+    # Edit .env and add your GITHUB_USER and GITHUB_TOKEN
+    ```
+
+2.  **Launch Environment and Run Migration**:
+    ```bash
+    ./setup_and_test.sh
+    ```
+    This script will:
+    - Launch a Forgejo container on `http://localhost:3000`.
+    - Create an admin user (`testuser`).
+    - Generate a Forgejo token and save it to your `.env`.
+    - Automatically execute the migration script.
+
+3.  **Inspect Results**:
+    Visit `http://localhost:3000` and log in with:
+    - **User**: `testuser`
+    - **Password**: `Password123!`
+
 ### Generate `GITHUB_TOKEN`
 
-1. Navigate to GitHub
-2. Click your profile at the top right
-3. Click `Settings`
-4. Scroll down to the bottom of the left menu
-5. Click `Developer settings`
-6. Click `Tokens (classic)`
-7. Click `Generate new token -> Generate new token(classic)`
-8. Select scopes:
-    repo: all
-9. Either enter when prompted or save to GITHUB_TOKEN w/ `export GITHUB_TOKEN=<Your token here>`
+You can use either a **Fine-grained token** (recommended) or a **Classic token**.
+
+#### Fine-grained Token (Recommended)
+1. Go to `Settings` -> `Developer settings` -> `Personal access tokens` -> `Fine-grained tokens`.
+2. Click `Generate new token`.
+3. Set **Resource owner** to your account.
+4. Set **Repository access** to `All repositories` (or select specific ones).
+5. Set **Permissions**:
+    - `Contents`: Read-only
+    - `Metadata`: Read-only
+6. Click `Generate token`.
+
+#### Classic Token
+1. Go to `Settings` -> `Developer settings` -> `Personal access tokens` -> `Tokens (classic)`.
+2. Click `Generate new token (classic)`.
+3. Select scope: `repo`.
+4. Click `Generate token`.
 
 ### Generate `FORGEJO_TOKEN`
 
