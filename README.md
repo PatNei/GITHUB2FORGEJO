@@ -2,12 +2,12 @@
 
 # GitHub ➡️ Forgejo Migration Script in Bash
 
-This is a Bash script for migrating **all repositories** from a GitHub user or organization account to a specified Forgejo instance.
+This is a Bash script for migrating repositories from a GitHub user or organization account to a specified Forgejo instance. By default, it migrates **all repositories**, but you can filter them by using a fine-grained GitHub token with specific repository access.
 It supports **mirroring** or one-time **cloning** and includes a cleanup feature for removing repositories on Forgejo that no longer exist on GitHub.
 
 ## Features
 
-- Migrates all repositories for a GitHub user or organization.
+- Migrates all (or selected) repositories for a GitHub user or organization.
 - **Smart Detection**: Automatically detects if the account is a User or Organization.
 - Supports both **public** and **private** repositories.
 - **Mirror mode**: repositories stay in sync with GitHub.
@@ -109,7 +109,7 @@ You can use either a **Fine-grained token** (recommended) or a **Classic token**
 ## What It Does
 
 1. **Account Auto-Detection**: Checks if the specified GitHub account is a User or an Organization (can be overridden via `GITHUB_IS_ORG`).
-2. **Repository Discovery**: Fetches all repositories belonging to the target account.
+2. **Repository Discovery**: Fetches all repositories (or specific ones if using a restricted token) belonging to the target account.
 3. **Cleanup (Optional)**: Deletes any Forgejo mirrored repositories that no longer have a source on GitHub.
 4. **Migration**: Migrates each repository to Forgejo using the selected strategy (`mirror` or `clone`).
 
@@ -122,7 +122,7 @@ You can use either a **Fine-grained token** (recommended) or a **Classic token**
 
 ### ❓ Can I migrate specific repositories?
 
-Nope. This script is all or nothing. For selective migration, please use the Forgejo web interface.
+Yes! While the script defaults to migrating all accessible repositories, you can limit the scope by using a **GitHub Fine-grained Personal Access Token**. When creating the token, select **"Only select repositories"** instead of "All repositories". The script will then only see and migrate the repositories you explicitly selected.
 
 
 ## License
