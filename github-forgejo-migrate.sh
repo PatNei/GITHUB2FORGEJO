@@ -83,10 +83,10 @@ if [ -z "$GITHUB_IS_ORG" ]; then
   if [ -n "$GITHUB_TOKEN" ]; then
     auth_header="Authorization: token $GITHUB_TOKEN"
   fi
-  
+
   api_response=$(curl -s -H "$auth_header" "https://api.github.com/users/$GITHUB_USER")
   account_type=$(echo "$api_response" | jq -r '.type')
-  
+
   if [[ "$account_type" == "Organization" ]]; then
     GITHUB_IS_ORG=true
     echo -e " ${green}Organization detected.${reset}"
@@ -134,7 +134,20 @@ else
   FORCE_SYNC=false
 fi
 
+# Get the MIGRATE_ARCHIVE_STATUS setting from the environment or via prompt.
+MIGRATE_ARCHIVE_STATUS=$(or_default "$MIGRATE_ARCHIVE_STATUS" "${yellow}Should the archive status of repositories be transferred? (Yes/No):${reset}" "Yes")
+
+# Clean up MIGRATE_ARCHIVE_STATUS input.
+MIGRATE_ARCHIVE_STATUS="$(echo "$MIGRATE_ARCHIVE_STATUS" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
+
+if [[ "$MIGRATE_ARCHIVE_STATUS" =~ ^y(es)?$ ]]; then
+  MIGRATE_ARCHIVE_STATUS=true
+else
+  MIGRATE_ARCHIVE_STATUS=false
+fi
+
 echo -e "${green}Force sync is set to: ${FORCE_SYNC}${reset}"
+echo -e "${green}Migrate archive status is set to: ${MIGRATE_ARCHIVE_STATUS}${reset}"
 # -------------------------
 # 1. Fetch GitHub Repositories via API (paginated)
 # -------------------------
@@ -228,6 +241,7 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
   repo_name=$(echo "$repo" | jq -r '.name')
   html_url=$(echo "$repo" | jq -r '.html_url')
   private_flag=$(echo "$repo" | jq -r '.private')
+  archived_flag=$(echo "$repo" | jq -r '.archived')
   full_name=$(echo "$repo" | jq -r '.full_name')
 
   # Prepare status message.
@@ -271,11 +285,32 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
   response=$(curl -s -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$payload" "$FORGEJO_URL/api/v1/repos/migrate")
   error_message=$(echo "$response" | jq -r '.message // empty')
 
+  success=false
   if [[ "$error_message" == *"already exists"* ]]; then
-    echo -e " ${yellow}Already mirrored!${reset}"
+    echo -e " ${yellow}Already exists!${reset}"
+    success=true
   elif [ -n "$error_message" ]; then
     echo -e " ${red}Unknown error: $error_message${reset}"
   else
     echo -e " ${green}Success!${reset}"
+    success=true
+  fi
+
+  # If migration succeeded (or already existed) and the repo is archived on GitHub,
+  # and the user wants to transfer archive status, patch the Forgejo repo.
+  if [ "$success" = true ] && [ "$archived_flag" = "true" ] && [ "$MIGRATE_ARCHIVE_STATUS" = true ]; then
+    if [ "$mirror" = true ]; then
+      echo -e "  ${yellow}Skipping archive status transfer (not supported for mirrors).${reset}"
+    else
+      echo -ne "  ${yellow}Archiving repository on Forgejo...${reset}"
+      patch_payload='{"archived": true}'
+      patch_response=$(curl -s -X PATCH -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$patch_payload" "$FORGEJO_URL/api/v1/repos/$FORGEJO_USER/$repo_name")
+      patch_error=$(echo "$patch_response" | jq -r '.message // empty')
+      if [ -n "$patch_error" ]; then
+        echo -e " ${red}Error: $patch_error${reset}"
+      else
+        echo -e " ${green}Done!${reset}"
+      fi
+    fi
   fi
 done

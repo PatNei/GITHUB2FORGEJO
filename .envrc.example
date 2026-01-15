@@ -1,0 +1,12 @@
+# GitHub Configuration
+export GITHUB_USER=""
+export GITHUB_TOKEN=""
+
+# Forgejo Configuration (Defaults for setup_and_test.sh)
+export FORGEJO_URL="http://localhost:3000"
+export FORGEJO_USER="testuser"
+export FORGEJO_TOKEN=""
+
+# Migration Strategy (mirror/clone)
+export STRATEGY="mirror"
+export FORCE_SYNC="No"
