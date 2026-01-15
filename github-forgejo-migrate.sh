@@ -24,12 +24,12 @@ reset=$(tput sgr0)
 
 # Additional check to verify commands are installed as described in the documentation.
 command_exists() {
-    if command -v "$1" >/dev/null 2>&1; then
-        printf "${green}Checking Prerequisite: $1 is: Installed!\n"
-    else
-        printf "${yellow}%b$1 is not installed...%b\n"
-        exit 1
-    fi
+  if command -v "$1" >/dev/null 2>&1; then
+    printf "${green}Checking Prerequisite: $1 is: Installed!\n"
+  else
+    printf "${yellow}%b$1 is not installed...%b\n"
+    exit 1
+  fi
 }
 
 command_exists bash
@@ -42,33 +42,37 @@ command_exists jq
 #   prompt_msg: The prompt to display (this can include color codes)
 #   default_value: A plain default value that will be used if the user enters nothing.
 or_default() {
-    local current_val="$1"
-    local prompt_msg="$2"
-    local default_value="$3"
-    local input_val
+  local current_val="$1"
+  local prompt_msg="$2"
+  local default_value="$3"
+  local input_val
 
-    # If the variable is already set, notify the user and return that value.
-    if [ -n "$current_val" ]; then
+  # If the variable is already set, notify the user and return that value.
+  if [ -n "$current_val" ]; then
     printf "%b found in environment, using: %s%b\n" "${cyan}${prompt_msg}" "$current_val" "${reset}" >&2
     echo "$current_val"
     return
-    fi
+  fi
 
-    # Prompt the user.
-    read -r -p "$prompt_msg " input_val
-    # Trim any extraneous whitespace.
-    input_val="$(echo "$input_val" | xargs)"
+  # Prompt the user.
+  read -r -p "$prompt_msg " input_val
+  # Trim any extraneous whitespace.
+  input_val="$(echo "$input_val" | xargs)"
 
-    if [ -z "$input_val" ] && [ -n "$default_value" ]; then
+  if [ -z "$input_val" ] && [ -n "$default_value" ]; then
     input_val="$default_value"
     printf "%bNo input provided. Using default: %s%b\n" "${cyan}" "$default_value" "${reset}" >&2
-    fi
+  fi
 
-    echo "$input_val"
+  echo "$input_val"
 }
 
 # Get configuration from the environment or via prompt.
 GITHUB_USER=$(or_default "$GITHUB_USER" "${red}GitHub username:${reset}" "")
+if [ -z "$GITHUB_USER" ]; then
+  echo -e "${red}Error: GITHUB_USER is required.${reset}" >&2
+  exit 1
+fi
 GITHUB_TOKEN=$(or_default "$GITHUB_TOKEN" "${red}GitHub access token (optional, only used for private repositories):${reset}" "")
 FORGEJO_URL=$(or_default "$FORGEJO_URL" "${green}Forgejo instance URL (with https://):${reset}" "")
 # Remove any trailing slash.
@@ -102,7 +106,7 @@ echo -e "${green}Force sync is set to: ${FORCE_SYNC}${reset}"
 # -------------------------
 # 1. Fetch GitHub Repositories via API (paginated)
 # -------------------------
-all_repos="[]"  # will hold a JSON array of repos
+all_repos="[]" # will hold a JSON array of repos
 page=1
 
 while true; do
@@ -112,8 +116,15 @@ while true; do
     response=$(curl -s "https://api.github.com/users/$GITHUB_USER/repos?per_page=100&page=$page")
   fi
 
+  # Check for API error messages
+  if echo "$response" | jq -e 'if type == "object" and .message then true else false end' >/dev/null; then
+    err_msg=$(echo "$response" | jq -r '.message')
+    echo -e "${red}GitHub API Error: $err_msg${reset}" >&2
+    exit 1
+  fi
+
   # Filter repos so that only those whose owner.login matches GITHUB_USER are selected.
-  filtered=$(echo "$response" | jq --arg gu "$GITHUB_USER" '[.[] | select(.owner.login == $gu)]')
+  filtered=$(echo "$response" | jq --arg gu "$GITHUB_USER" 'if type == "array" then [.[] | select(.owner.login == $gu)] else [] end')
   count=$(echo "$filtered" | jq 'length')
   if [ "$count" -eq 0 ]; then
     break
@@ -178,7 +189,7 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
 
   # Prepare status message.
   # Capitalize the strategy for display.
-  strategy_display="$(tr '[:lower:]' '[:upper:]' <<< "${STRATEGY:0:1}")${STRATEGY:1}"
+  strategy_display="$(tr '[:lower:]' '[:upper:]' <<<"${STRATEGY:0:1}")${STRATEGY:1}"
   if [ "$private_flag" = "true" ]; then
     access_type="${red}private${reset}"
   else
@@ -188,15 +199,13 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
 
   # Determine which clone address to use.
   if [ "$private_flag" = "true" ]; then
-    if [ -n "$GITHUB_TOKEN" ]; then
-      github_repo_url="https://$GITHUB_TOKEN@github.com/$full_name"
-    else
+    if [ -z "$GITHUB_TOKEN" ]; then
       echo -e " ${red}Error: Private repo but no GitHub token provided!${reset}"
       continue
     fi
-  else
-    github_repo_url="$html_url"
   fi
+  # Always use the standard URL; authentication is passed via auth_token in the payload.
+  github_repo_url="$html_url"
 
   # Set mirror flag for the migration API:
   if [ "$STRATEGY" = "clone" ]; then
@@ -212,7 +221,8 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
     --argjson private "$private_flag" \
     --arg owner "$FORGEJO_USER" \
     --arg repo "$repo_name" \
-    '{clone_addr: $addr, mirror: $mirror, private: $private, repo_owner: $owner, repo_name: $repo}')
+    --arg auth_token "$GITHUB_TOKEN" \
+    '{clone_addr: $addr, mirror: $mirror, private: $private, repo_owner: $owner, repo_name: $repo, auth_token: (if $auth_token != "" then $auth_token else null end)}')
 
   # Send the POST request to the Forgejo migration endpoint.
   response=$(curl -s -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$payload" "$FORGEJO_URL/api/v1/repos/migrate")
