@@ -42,27 +42,60 @@ command_exists jq
 # Two display strings are provided:
 #   prompt_msg: The prompt to display (this can include color codes)
 #   default_value: A plain default value that will be used if the user enters nothing.
+#   is_secret: (Optional) If set to true/yes, the input will be hidden and the output masked.
 or_default() {
   local current_val="$1"
   local prompt_msg="$2"
   local default_value="$3"
+  local is_secret="$4"
   local input_val
+
+  # Normalize is_secret
+  if [[ "$is_secret" =~ ^[Yy] ]]; then
+    is_secret=true
+  else
+    is_secret=false
+  fi
 
   # If the variable is already set, notify the user and return that value.
   if [ -n "$current_val" ]; then
-    printf "%b found in environment, using: %s%b\n" "${cyan}${prompt_msg}" "$current_val" "${reset}" >&2
+    local display_val="$current_val"
+    if [ "$is_secret" = true ]; then
+      if [ ${#current_val} -gt 5 ]; then
+        display_val="...${current_val: -5}"
+      else
+        display_val="*****"
+      fi
+    fi
+    printf "%b found in environment, using: %s%b\n" "${cyan}${prompt_msg}" "$display_val" "${reset}" >&2
     echo "$current_val"
     return
   fi
 
   # Prompt the user.
-  read -r -p "$prompt_msg " input_val
+  if [ "$is_secret" = true ]; then
+    # Silent input for secrets
+    printf "%s " "$prompt_msg" >&2
+    read -r -s input_val
+    echo "" >&2 # Newline after silent input
+  else
+    read -r -p "$prompt_msg " input_val
+  fi
+  
   # Trim any extraneous whitespace.
   input_val="$(echo "$input_val" | xargs)"
 
   if [ -z "$input_val" ] && [ -n "$default_value" ]; then
     input_val="$default_value"
-    printf "%bNo input provided. Using default: %s%b\n" "${cyan}" "$default_value" "${reset}" >&2
+    local display_default="$default_value"
+    if [ "$is_secret" = true ]; then
+      if [ ${#default_value} -gt 5 ]; then
+        display_default="...${default_value: -5}"
+      else
+        display_default="*****"
+      fi
+    fi
+    printf "%bNo input provided. Using default: %s%b\n" "${cyan}" "$display_default" "${reset}" >&2
   fi
 
   echo "$input_val"
@@ -105,12 +138,12 @@ else
   fi
 fi
 
-GITHUB_TOKEN=$(or_default "$GITHUB_TOKEN" "${red}GitHub access token (optional, only used for private repositories):${reset}" "")
+GITHUB_TOKEN=$(or_default "$GITHUB_TOKEN" "${red}GitHub access token (optional, only used for private repositories):${reset}" "" "yes")
 FORGEJO_URL=$(or_default "$FORGEJO_URL" "${green}Forgejo instance URL (with https://):${reset}" "")
 # Remove any trailing slash.
 FORGEJO_URL="${FORGEJO_URL%/}"
 FORGEJO_USER=$(or_default "$FORGEJO_USER" "${green}Forgejo username or organization to migrate to:${reset}" "")
-FORGEJO_TOKEN=$(or_default "$FORGEJO_TOKEN" "${green}Forgejo access token:${reset}" "")
+FORGEJO_TOKEN=$(or_default "$FORGEJO_TOKEN" "${green}Forgejo access token:${reset}" "" "yes")
 STRATEGY=$(or_default "$STRATEGY" "${cyan}Strategy (mirror/clone):${reset}" "mirror")
 
 # Convert STRATEGY to lowercase so input variations are handled.
