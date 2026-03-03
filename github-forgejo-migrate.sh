@@ -145,6 +145,14 @@ FORGEJO_URL="${FORGEJO_URL%/}"
 FORGEJO_USER=$(or_default "$FORGEJO_USER" "${green}Forgejo username or organization to migrate to:${reset}" "")
 FORGEJO_TOKEN=$(or_default "$FORGEJO_TOKEN" "${green}Forgejo access token:${reset}" "" "yes")
 STRATEGY=$(or_default "$STRATEGY" "${cyan}Strategy (mirror/clone):${reset}" "mirror")
+SKIP_FORKS=$(or_default "$SKIP_FORKS" "${cyan}Should forks be skipped? (Yes/No):${reset}" "")
+
+# Convert response to a boolean: true if the answer is yes (starting with "y"), false otherwise.
+if [[ "$SKIP_FORKS" =~ ^y(es)?$ ]]; then
+  SKIP_FORKS=true
+else
+  SKIP_FORKS=false
+fi
 
 # Convert STRATEGY to lowercase so input variations are handled.
 STRATEGY="$(echo "$STRATEGY" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
@@ -276,6 +284,7 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
   private_flag=$(echo "$repo" | jq -r '.private')
   archived_flag=$(echo "$repo" | jq -r '.archived')
   full_name=$(echo "$repo" | jq -r '.full_name')
+  is_fork=$(echo "$repo" | jq -r '.fork')
 
   # Prepare status message.
   # Capitalize the strategy for display.
@@ -286,6 +295,11 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
     access_type="${green}public${reset}"
   fi
   echo -ne "${blue}${strategy_display}ing ${access_type} repository ${purple}$html_url${blue} to ${white}$FORGEJO_URL/$FORGEJO_USER/$repo_name${blue}...${reset}"
+
+  if [[ "$SKIP_FORKS" == "true" && "$is_fork" == "true" ]]; then
+    echo -e " ${cyan}Skipping fork.${reset}"
+    continue
+  fi
 
   # Determine which clone address to use.
   if [ "$private_flag" = "true" ]; then
