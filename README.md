@@ -21,6 +21,7 @@ that no longer exist on GitHub.
 - **Clone mode**: one-time copy without ongoing sync.
 - **Archive Transfer**: Optionally transfers the archived status so archived
   repos remain read-only on Forgejo.
+- **Skip Forks**: Option to ignore forked repositories during migration.
 - Optional cleanup of outdated mirrors on Forgejo.
 - Fully terminal-interactive or configurable via environment variables.
 
@@ -56,6 +57,7 @@ variables:
 | `STRATEGY`               | Either `mirror` (default) or `clone`                                    |
 | `FORCE_SYNC`             | Set to `Yes` to delete Forgejo repos that no longer exist on GitHub     |
 | `MIGRATE_ARCHIVE_STATUS` | Set to `Yes` (default) to transfer the archived status of repositories  |
+| `MIGRATE_FORKS`          | Set to `No` to skip fork repositories during migration (default: `Yes`) |
 
 ### 2. Automated Development & Testing Environment
 

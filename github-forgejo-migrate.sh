@@ -179,8 +179,21 @@ else
   MIGRATE_ARCHIVE_STATUS=false
 fi
 
+# Get the MIGRATE_FORKS setting from the environment or via prompt.
+MIGRATE_FORKS=$(or_default "$MIGRATE_FORKS" "${yellow}Should fork repositories be migrated? (Yes/No):${reset}" "Yes")
+
+# Clean up MIGRATE_FORKS input.
+MIGRATE_FORKS="$(echo "$MIGRATE_FORKS" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
+
+if [[ "$MIGRATE_FORKS" =~ ^y(es)?$ ]]; then
+  MIGRATE_FORKS=true
+else
+  MIGRATE_FORKS=false
+fi
+
 echo -e "${green}Force sync is set to: ${FORCE_SYNC}${reset}"
 echo -e "${green}Migrate archive status is set to: ${MIGRATE_ARCHIVE_STATUS}${reset}"
+echo -e "${green}Migrate forks is set to: ${MIGRATE_FORKS}${reset}"
 # -------------------------
 # 1. Fetch GitHub Repositories via API (paginated)
 # -------------------------
@@ -276,6 +289,13 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
   private_flag=$(echo "$repo" | jq -r '.private')
   archived_flag=$(echo "$repo" | jq -r '.archived')
   full_name=$(echo "$repo" | jq -r '.full_name')
+  fork_flag=$(echo "$repo" | jq -r '.fork')
+
+  # Skip forked repos if MIGRATE_FORKS is false
+  if [ "$fork_flag" = "true" ] && [ "$MIGRATE_FORKS" = false ]; then
+    echo -e "${yellow}Skipping fork: ${white}$repo_name${reset}"
+    continue
+  fi
 
   # Prepare status message.
   # Capitalize the strategy for display.
