@@ -81,7 +81,7 @@ or_default() {
   else
     read -r -p "$prompt_msg " input_val
   fi
-  
+
   # Trim any extraneous whitespace.
   input_val="$(echo "$input_val" | xargs)"
 
@@ -191,9 +191,28 @@ else
   MIGRATE_FORKS=false
 fi
 
+# Get the DRY_RUN setting from the environment or via prompt.
+DRY_RUN=$(or_default "$DRY_RUN" "${yellow}Preview actions without executing (dry run)? (Yes/No):${reset}" "No")
+
+# Clean up DRY_RUN input.
+DRY_RUN="$(echo "$DRY_RUN" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
+
+if [[ "$DRY_RUN" =~ ^y(es)?$ ]]; then
+  DRY_RUN=true
+else
+  DRY_RUN=false
+fi
+
 echo -e "${green}Force sync is set to: ${FORCE_SYNC}${reset}"
 echo -e "${green}Migrate archive status is set to: ${MIGRATE_ARCHIVE_STATUS}${reset}"
 echo -e "${green}Migrate forks is set to: ${MIGRATE_FORKS}${reset}"
+echo -e "${green}Dry run is set to: ${DRY_RUN}${reset}"
+
+if $DRY_RUN; then
+  echo -e "${cyan}=== DRY RUN MODE ===${reset}"
+  echo -e "${cyan}No changes will be made. Previewing actions only.${reset}"
+fi
+
 # -------------------------
 # 1. Fetch GitHub Repositories via API (paginated)
 # -------------------------
@@ -265,9 +284,13 @@ if $FORCE_SYNC; then
       full_name=$(echo "$repo" | jq -r '.full_name')
       # If this repo name is not present in the GitHub repos list, delete it.
       if ! echo "$github_repo_names" | grep -Fxq "$repo_name"; then
-        echo -ne "${red}Deleting ${yellow}$FORGEJO_URL/$full_name${red} because the mirror source doesn't exist on GitHub anymore...${reset}"
-        curl -s -X DELETE -H "Authorization: token $FORGEJO_TOKEN" "$FORGEJO_URL/api/v1/repos/$full_name" >/dev/null
-        echo -e " ${green}Success!${reset}"
+        if ! $DRY_RUN; then
+          echo -ne "${red}Deleting ${yellow}$FORGEJO_URL/$full_name${red} because the mirror source doesn't exist on GitHub anymore...${reset}"
+          curl -s -X DELETE -H "Authorization: token $FORGEJO_TOKEN" "$FORGEJO_URL/api/v1/repos/$full_name" >/dev/null
+          echo -e " ${green}Success!${reset}"
+        else
+          echo -e "${cyan}[DRY RUN] Would delete: $FORGEJO_URL/$full_name${reset}"
+        fi
       fi
     done
   fi
@@ -334,18 +357,23 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
     --arg auth_token "$GITHUB_TOKEN" \
     '{clone_addr: $addr, mirror: $mirror, private: $private, repo_owner: $owner, repo_name: $repo, auth_token: (if $auth_token != "" then $auth_token else null end)}')
 
-  # Send the POST request to the Forgejo migration endpoint.
-  response=$(curl -s -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$payload" "$FORGEJO_URL/api/v1/repos/migrate")
-  error_message=$(echo "$response" | jq -r '.message // empty')
+  if ! $DRY_RUN; then
+    # Send the POST request to the Forgejo migration endpoint.
+    response=$(curl -s -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$payload" "$FORGEJO_URL/api/v1/repos/migrate")
+    error_message=$(echo "$response" | jq -r '.message // empty')
 
-  success=false
-  if [[ "$error_message" == *"already exists"* ]]; then
-    echo -e " ${yellow}Already exists!${reset}"
-    success=true
-  elif [ -n "$error_message" ]; then
-    echo -e " ${red}Unknown error: $error_message${reset}"
+    success=false
+    if [[ "$error_message" == *"already exists"* ]]; then
+      echo -e " ${yellow}Already exists!${reset}"
+      success=true
+    elif [ -n "$error_message" ]; then
+      echo -e " ${red}Unknown error: $error_message${reset}"
+    else
+      echo -e " ${green}Success!${reset}"
+      success=true
+    fi
   else
-    echo -e " ${green}Success!${reset}"
+    echo -e " ${cyan}[DRY RUN] Would migrate: $repo_name${reset}"
     success=true
   fi
 
@@ -355,14 +383,18 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
     if [ "$mirror" = true ]; then
       echo -e "  ${yellow}Skipping archive status transfer (not supported for mirrors).${reset}"
     else
-      echo -ne "  ${yellow}Archiving repository on Forgejo...${reset}"
-      patch_payload='{"archived": true}'
-      patch_response=$(curl -s -X PATCH -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$patch_payload" "$FORGEJO_URL/api/v1/repos/$FORGEJO_USER/$repo_name")
-      patch_error=$(echo "$patch_response" | jq -r '.message // empty')
-      if [ -n "$patch_error" ]; then
-        echo -e " ${red}Error: $patch_error${reset}"
+      if ! $DRY_RUN; then
+        echo -ne "  ${yellow}Archiving repository on Forgejo...${reset}"
+        patch_payload='{"archived": true}'
+        patch_response=$(curl -s -X PATCH -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$patch_payload" "$FORGEJO_URL/api/v1/repos/$FORGEJO_USER/$repo_name")
+        patch_error=$(echo "$patch_response" | jq -r '.message // empty')
+        if [ -n "$patch_error" ]; then
+          echo -e " ${red}Error: $patch_error${reset}"
+        else
+          echo -e " ${green}Done!${reset}"
+        fi
       else
-        echo -e " ${green}Done!${reset}"
+        echo -e " ${cyan}[DRY RUN] Would archive: $repo_name${reset}"
       fi
     fi
   fi

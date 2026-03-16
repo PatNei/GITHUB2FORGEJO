@@ -22,6 +22,7 @@ that no longer exist on GitHub.
 - **Archive Transfer**: Optionally transfers the archived status so archived
   repos remain read-only on Forgejo.
 - **Skip Forks**: Option to ignore forked repositories during migration.
+- **Dry Run Mode**: Preview what would happen without making changes.
 - Optional cleanup of outdated mirrors on Forgejo.
 - Fully terminal-interactive or configurable via environment variables.
 
@@ -46,18 +47,19 @@ You can run the script directly:
 You will be prompted for required values unless you provide them via environment
 variables:
 
-| Variable                 | Description                                                             |
-| ------------------------ | ----------------------------------------------------------------------- |
-| `GITHUB_USER`            | GitHub username or organization name                                    |
-| `GITHUB_IS_ORG`          | (Optional) Force account type (`Yes`/`No`). Auto-detected if omitted.   |
-| `GITHUB_TOKEN`           | GitHub access token. **Required for private repos or Organizations.**   |
-| `FORGEJO_URL`            | Full URL to your Forgejo instance (e.g., `https://forgejo.example.com`) |
-| `FORGEJO_USER`           | Forgejo username or organization to own the migrated repos              |
-| `FORGEJO_TOKEN`          | Forgejo personal access token                                           |
-| `STRATEGY`               | Either `mirror` (default) or `clone`                                    |
-| `FORCE_SYNC`             | Set to `Yes` to delete Forgejo repos that no longer exist on GitHub     |
-| `MIGRATE_ARCHIVE_STATUS` | Set to `Yes` (default) to transfer the archived status of repositories  |
-| `MIGRATE_FORKS`          | Set to `No` to skip fork repositories during migration (default: `Yes`) |
+| Variable                 | Description                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------- |
+| `GITHUB_USER`            | GitHub username or organization name                                            |
+| `GITHUB_IS_ORG`          | (Optional) Force account type (`Yes`/`No`). Auto-detected if omitted.           |
+| `GITHUB_TOKEN`           | GitHub access token. **Required for private repos or Organizations.**           |
+| `FORGEJO_URL`            | Full URL to your Forgejo instance (e.g., `https://forgejo.example.com`)         |
+| `FORGEJO_USER`           | Forgejo username or organization to own the migrated repos                      |
+| `FORGEJO_TOKEN`          | Forgejo personal access token                                                   |
+| `STRATEGY`               | Either `mirror` (default) or `clone`                                            |
+| `FORCE_SYNC`             | Set to `Yes` to delete Forgejo repos that no longer exist on GitHub             |
+| `MIGRATE_ARCHIVE_STATUS` | Set to `Yes` (default) to transfer the archived status of repositories          |
+| `MIGRATE_FORKS`          | Set to `No` to skip fork repositories during migration (default: `Yes`)         |
+| `DRY_RUN`                | Set to `Yes` to preview actions without executing (dry run mode, default: `No`) |
 
 ### 2. Automated Development & Testing Environment
 
