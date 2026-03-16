@@ -373,7 +373,7 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
 			success=true
 		fi
 	else
-		echo -e " ${cyan}[DRY RUN] Would migrate: $repo_name${reset}"
+		echo -e "\n${cyan}[DRY RUN] Would migrate: $repo_name${reset}"
 		success=true
 	fi
 
