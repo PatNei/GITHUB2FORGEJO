@@ -1,5 +1,10 @@
+# Ignore everything by default
 *
+
+# Allow gitignore itself
 !.gitignore
+
+# Allow specific file types in root directory
 !*.sh
-!*.md
+!README.md
 !.envrc.example
