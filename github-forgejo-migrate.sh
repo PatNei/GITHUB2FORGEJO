@@ -25,12 +25,12 @@ reset=$(tput sgr0)
 
 # Additional check to verify commands are installed as described in the documentation.
 command_exists() {
-  if command -v "$1" >/dev/null 2>&1; then
-    printf "${green}Checking Prerequisite: $1 is: Installed!\n"
-  else
-    printf "${yellow}%b$1 is not installed...%b\n"
-    exit 1
-  fi
+	if command -v "$1" >/dev/null 2>&1; then
+		printf "%sChecking Prerequisite: %s is: Installed!\n" "$green" "$1"
+	else
+		printf "${yellow}%b$1 is not installed...%b\n"
+		exit 1
+	fi
 }
 
 command_exists bash
@@ -44,98 +44,98 @@ command_exists jq
 #   default_value: A plain default value that will be used if the user enters nothing.
 #   is_secret: (Optional) If set to true/yes, the input will be hidden and the output masked.
 or_default() {
-  local current_val="$1"
-  local prompt_msg="$2"
-  local default_value="$3"
-  local is_secret="$4"
-  local input_val
+	local current_val="$1"
+	local prompt_msg="$2"
+	local default_value="$3"
+	local is_secret="$4"
+	local input_val
 
-  # Normalize is_secret
-  if [[ "$is_secret" =~ ^[Yy] ]]; then
-    is_secret=true
-  else
-    is_secret=false
-  fi
+	# Normalize is_secret
+	if [[ "$is_secret" =~ ^[Yy] ]]; then
+		is_secret=true
+	else
+		is_secret=false
+	fi
 
-  # If the variable is already set, notify the user and return that value.
-  if [ -n "$current_val" ]; then
-    local display_val="$current_val"
-    if [ "$is_secret" = true ]; then
-      if [ ${#current_val} -gt 5 ]; then
-        display_val="...${current_val: -5}"
-      else
-        display_val="*****"
-      fi
-    fi
-    printf "%b found in environment, using: %s%b\n" "${cyan}${prompt_msg}" "$display_val" "${reset}" >&2
-    echo "$current_val"
-    return
-  fi
+	# If the variable is already set, notify the user and return that value.
+	if [ -n "$current_val" ]; then
+		local display_val="$current_val"
+		if [ "$is_secret" = true ]; then
+			if [ ${#current_val} -gt 5 ]; then
+				display_val="...${current_val: -5}"
+			else
+				display_val="*****"
+			fi
+		fi
+		printf "%b found in environment, using: %s%b\n" "${cyan}${prompt_msg}" "$display_val" "${reset}" >&2
+		echo "$current_val"
+		return
+	fi
 
-  # Prompt the user.
-  if [ "$is_secret" = true ]; then
-    # Silent input for secrets
-    printf "%s " "$prompt_msg" >&2
-    read -r -s input_val
-    echo "" >&2 # Newline after silent input
-  else
-    read -r -p "$prompt_msg " input_val
-  fi
+	# Prompt the user.
+	if [ "$is_secret" = true ]; then
+		# Silent input for secrets
+		printf "%s " "$prompt_msg" >&2
+		read -r -s input_val
+		echo "" >&2 # Newline after silent input
+	else
+		read -r -p "$prompt_msg " input_val
+	fi
 
-  # Trim any extraneous whitespace.
-  input_val="$(echo "$input_val" | xargs)"
+	# Trim any extraneous whitespace.
+	input_val="$(echo "$input_val" | xargs)"
 
-  if [ -z "$input_val" ] && [ -n "$default_value" ]; then
-    input_val="$default_value"
-    local display_default="$default_value"
-    if [ "$is_secret" = true ]; then
-      if [ ${#default_value} -gt 5 ]; then
-        display_default="...${default_value: -5}"
-      else
-        display_default="*****"
-      fi
-    fi
-    printf "%bNo input provided. Using default: %s%b\n" "${cyan}" "$display_default" "${reset}" >&2
-  fi
+	if [ -z "$input_val" ] && [ -n "$default_value" ]; then
+		input_val="$default_value"
+		local display_default="$default_value"
+		if [ "$is_secret" = true ]; then
+			if [ ${#default_value} -gt 5 ]; then
+				display_default="...${default_value: -5}"
+			else
+				display_default="*****"
+			fi
+		fi
+		printf "%bNo input provided. Using default: %s%b\n" "${cyan}" "$display_default" "${reset}" >&2
+	fi
 
-  echo "$input_val"
+	echo "$input_val"
 }
 
 # Get configuration from the environment or via prompt.
 GITHUB_USER=$(or_default "$GITHUB_USER" "${red}GitHub username:${reset}" "")
 if [ -z "$GITHUB_USER" ]; then
-  echo -e "${red}Error: GITHUB_USER is required.${reset}" >&2
-  exit 1
+	echo -e "${red}Error: GITHUB_USER is required.${reset}" >&2
+	exit 1
 fi
 
 # Auto-detect GITHUB_IS_ORG if not provided
 if [ -z "$GITHUB_IS_ORG" ]; then
-  echo -ne "${cyan}Checking account type for $GITHUB_USER...${reset}"
-  # Use token if available to avoid rate limits
-  auth_header=""
-  if [ -n "$GITHUB_TOKEN" ]; then
-    auth_header="Authorization: token $GITHUB_TOKEN"
-  fi
+	echo -ne "${cyan}Checking account type for $GITHUB_USER...${reset}"
+	# Use token if available to avoid rate limits
+	auth_header=""
+	if [ -n "$GITHUB_TOKEN" ]; then
+		auth_header="Authorization: token $GITHUB_TOKEN"
+	fi
 
-  api_response=$(curl -s -H "$auth_header" "https://api.github.com/users/$GITHUB_USER")
-  account_type=$(echo "$api_response" | jq -r '.type')
+	api_response=$(curl -s -H "$auth_header" "https://api.github.com/users/$GITHUB_USER")
+	account_type=$(echo "$api_response" | jq -r '.type')
 
-  if [[ "$account_type" == "Organization" ]]; then
-    GITHUB_IS_ORG=true
-    echo -e " ${green}Organization detected.${reset}"
-  else
-    GITHUB_IS_ORG=false
-    echo -e " ${green}User detected.${reset}"
-  fi
+	if [[ "$account_type" == "Organization" ]]; then
+		GITHUB_IS_ORG=true
+		echo -e " ${green}Organization detected.${reset}"
+	else
+		GITHUB_IS_ORG=false
+		echo -e " ${green}User detected.${reset}"
+	fi
 else
-  printf "%b found in environment, using: %s%b\n" "${cyan}Is the GitHub user an organization? (Yes/No):${reset}" "$GITHUB_IS_ORG" "${reset}" >&2
-  # Clean up user input if provided manually
-  GITHUB_IS_ORG="$(echo "$GITHUB_IS_ORG" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
-  if [[ "$GITHUB_IS_ORG" =~ ^y(es)?$ ]] || [[ "$GITHUB_IS_ORG" == "true" ]]; then
-    GITHUB_IS_ORG=true
-  else
-    GITHUB_IS_ORG=false
-  fi
+	printf "%b found in environment, using: %s%b\n" "${cyan}Is the GitHub user an organization? (Yes/No):${reset}" "$GITHUB_IS_ORG" "${reset}" >&2
+	# Clean up user input if provided manually
+	GITHUB_IS_ORG="$(echo "$GITHUB_IS_ORG" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
+	if [[ "$GITHUB_IS_ORG" =~ ^y(es)?$ ]] || [[ "$GITHUB_IS_ORG" == "true" ]]; then
+		GITHUB_IS_ORG=true
+	else
+		GITHUB_IS_ORG=false
+	fi
 fi
 
 GITHUB_TOKEN=$(or_default "$GITHUB_TOKEN" "${red}GitHub access token (optional, only used for private repositories):${reset}" "" "yes")
@@ -151,8 +151,8 @@ STRATEGY="$(echo "$STRATEGY" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
 
 # Validate STRATEGY input.
 if [[ "$STRATEGY" != "mirror" && "$STRATEGY" != "clone" ]]; then
-  echo -e "${red}Error: Strategy must be either 'mirror' or 'clone'.${reset}" >&2
-  exit 1
+	echo -e "${red}Error: Strategy must be either 'mirror' or 'clone'.${reset}" >&2
+	exit 1
 fi
 # Get the FORCE_SYNC setting from the environment or via prompt.
 FORCE_SYNC=$(or_default "$FORCE_SYNC" "${yellow}Should mirrored repos that don't have a GitHub source anymore be deleted? (Yes/No):${reset}" "No")
@@ -162,9 +162,9 @@ FORCE_SYNC="$(echo "$FORCE_SYNC" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
 
 # Convert response to a boolean: true if the answer is yes (starting with "y"), false otherwise.
 if [[ "$FORCE_SYNC" =~ ^y(es)?$ ]]; then
-  FORCE_SYNC=true
+	FORCE_SYNC=true
 else
-  FORCE_SYNC=false
+	FORCE_SYNC=false
 fi
 
 # Get the MIGRATE_ARCHIVE_STATUS setting from the environment or via prompt.
@@ -174,9 +174,9 @@ MIGRATE_ARCHIVE_STATUS=$(or_default "$MIGRATE_ARCHIVE_STATUS" "${yellow}Should t
 MIGRATE_ARCHIVE_STATUS="$(echo "$MIGRATE_ARCHIVE_STATUS" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
 
 if [[ "$MIGRATE_ARCHIVE_STATUS" =~ ^y(es)?$ ]]; then
-  MIGRATE_ARCHIVE_STATUS=true
+	MIGRATE_ARCHIVE_STATUS=true
 else
-  MIGRATE_ARCHIVE_STATUS=false
+	MIGRATE_ARCHIVE_STATUS=false
 fi
 
 # Get the MIGRATE_FORKS setting from the environment or via prompt.
@@ -186,9 +186,9 @@ MIGRATE_FORKS=$(or_default "$MIGRATE_FORKS" "${yellow}Should fork repositories b
 MIGRATE_FORKS="$(echo "$MIGRATE_FORKS" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
 
 if [[ "$MIGRATE_FORKS" =~ ^y(es)?$ ]]; then
-  MIGRATE_FORKS=true
+	MIGRATE_FORKS=true
 else
-  MIGRATE_FORKS=false
+	MIGRATE_FORKS=false
 fi
 
 # Get the DRY_RUN setting from the environment or via prompt.
@@ -198,9 +198,9 @@ DRY_RUN=$(or_default "$DRY_RUN" "${yellow}Preview actions without executing (dry
 DRY_RUN="$(echo "$DRY_RUN" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
 
 if [[ "$DRY_RUN" =~ ^y(es)?$ ]]; then
-  DRY_RUN=true
+	DRY_RUN=true
 else
-  DRY_RUN=false
+	DRY_RUN=false
 fi
 
 echo -e "${green}Force sync is set to: ${FORCE_SYNC}${reset}"
@@ -209,8 +209,8 @@ echo -e "${green}Migrate forks is set to: ${MIGRATE_FORKS}${reset}"
 echo -e "${green}Dry run is set to: ${DRY_RUN}${reset}"
 
 if $DRY_RUN; then
-  echo -e "${cyan}=== DRY RUN MODE ===${reset}"
-  echo -e "${cyan}No changes will be made. Previewing actions only.${reset}"
+	echo -e "${cyan}=== DRY RUN MODE ===${reset}"
+	echo -e "${cyan}No changes will be made. Previewing actions only.${reset}"
 fi
 
 # -------------------------
@@ -225,75 +225,75 @@ curl_opts=(-s)
 
 # Use authenticated user endpoint if token exists (and not overridden by Org)
 if [ -n "$GITHUB_TOKEN" ]; then
-  curl_opts+=(-H "Authorization: token $GITHUB_TOKEN")
-  repo_base_url="https://api.github.com/user/repos"
+	curl_opts+=(-H "Authorization: token $GITHUB_TOKEN")
+	repo_base_url="https://api.github.com/user/repos"
 fi
 
 # If Organization, force Org endpoint
 if $GITHUB_IS_ORG; then
-  repo_base_url="https://api.github.com/orgs/$GITHUB_USER/repos"
+	repo_base_url="https://api.github.com/orgs/$GITHUB_USER/repos"
 fi
 
 while true; do
-  response=$(curl "${curl_opts[@]}" "$repo_base_url?per_page=100&page=$page")
+	response=$(curl "${curl_opts[@]}" "$repo_base_url?per_page=100&page=$page")
 
-  # Check for API error messages
-  if echo "$response" | jq -e 'if type == "object" and .message then true else false end' >/dev/null; then
-    err_msg=$(echo "$response" | jq -r '.message')
-    echo -e "${red}GitHub API Error: $err_msg${reset}" >&2
-    exit 1
-  fi
+	# Check for API error messages
+	if echo "$response" | jq -e 'if type == "object" and .message then true else false end' >/dev/null; then
+		err_msg=$(echo "$response" | jq -r '.message')
+		echo -e "${red}GitHub API Error: $err_msg${reset}" >&2
+		exit 1
+	fi
 
-  # Filter repos so that only those whose owner.login matches GITHUB_USER are selected.
-  filtered=$(echo "$response" | jq --arg gu "$GITHUB_USER" 'if type == "array" then [.[] | select(.owner.login == $gu)] else [] end')
-  count=$(echo "$filtered" | jq 'length')
-  if [ "$count" -eq 0 ]; then
-    break
-  fi
-  # Merge this page with the existing JSON array:
-  all_repos=$(echo "$all_repos" "$filtered" | jq -s 'add')
-  # If we received less than 100 repos, we're done.
-  if [ "$count" -lt 100 ]; then
-    break
-  fi
-  page=$((page + 1))
+	# Filter repos so that only those whose owner.login matches GITHUB_USER are selected.
+	filtered=$(echo "$response" | jq --arg gu "$GITHUB_USER" 'if type == "array" then [.[] | select(.owner.login == $gu)] else [] end')
+	count=$(echo "$filtered" | jq 'length')
+	if [ "$count" -eq 0 ]; then
+		break
+	fi
+	# Merge this page with the existing JSON array:
+	all_repos=$(echo "$all_repos" "$filtered" | jq -s 'add')
+	# If we received less than 100 repos, we're done.
+	if [ "$count" -lt 100 ]; then
+		break
+	fi
+	page=$((page + 1))
 done
 
 # -------------------------
 # 2. (Optional) Force sync: Delete Forgejo repos that are mirrored but no longer exist on GitHub.
 # -------------------------
 if $FORCE_SYNC; then
-  # Get GitHub repo names into a plain list.
-  github_repo_names=$(echo "$all_repos" | jq -r '.[].name')
+	# Get GitHub repo names into a plain list.
+	github_repo_names=$(echo "$all_repos" | jq -r '.[].name')
 
-  # Fetch Forgejo repos.
-  forgejo_response=$(curl -s -H "Authorization: token $FORGEJO_TOKEN" "$FORGEJO_URL/api/v1/user/repos")
+	# Fetch Forgejo repos.
+	forgejo_response=$(curl -s -H "Authorization: token $FORGEJO_TOKEN" "$FORGEJO_URL/api/v1/user/repos")
 
-  # Filter to only those repos created via mirror; if no GitHub token provided, also filter out private repos.
-  if [ -z "$GITHUB_TOKEN" ]; then
-    forgejo_mirrored=$(echo "$forgejo_response" | jq '[.[] | select(.mirror == true and .private == false)]')
-  else
-    forgejo_mirrored=$(echo "$forgejo_response" | jq '[.[] | select(.mirror == true)]')
-  fi
+	# Filter to only those repos created via mirror; if no GitHub token provided, also filter out private repos.
+	if [ -z "$GITHUB_TOKEN" ]; then
+		forgejo_mirrored=$(echo "$forgejo_response" | jq '[.[] | select(.mirror == true and .private == false)]')
+	else
+		forgejo_mirrored=$(echo "$forgejo_response" | jq '[.[] | select(.mirror == true)]')
+	fi
 
-  count_forgejo=$(echo "$forgejo_mirrored" | jq 'length')
-  if [ "$count_forgejo" -gt 0 ]; then
-    # Iterate over each Forgejo mirrored repo.
-    echo "$forgejo_mirrored" | jq -c '.[]' | while read -r repo; do
-      repo_name=$(echo "$repo" | jq -r '.name')
-      full_name=$(echo "$repo" | jq -r '.full_name')
-      # If this repo name is not present in the GitHub repos list, delete it.
-      if ! echo "$github_repo_names" | grep -Fxq "$repo_name"; then
-        if ! $DRY_RUN; then
-          echo -ne "${red}Deleting ${yellow}$FORGEJO_URL/$full_name${red} because the mirror source doesn't exist on GitHub anymore...${reset}"
-          curl -s -X DELETE -H "Authorization: token $FORGEJO_TOKEN" "$FORGEJO_URL/api/v1/repos/$full_name" >/dev/null
-          echo -e " ${green}Success!${reset}"
-        else
-          echo -e "${cyan}[DRY RUN] Would delete: $FORGEJO_URL/$full_name${reset}"
-        fi
-      fi
-    done
-  fi
+	count_forgejo=$(echo "$forgejo_mirrored" | jq 'length')
+	if [ "$count_forgejo" -gt 0 ]; then
+		# Iterate over each Forgejo mirrored repo.
+		echo "$forgejo_mirrored" | jq -c '.[]' | while read -r repo; do
+			repo_name=$(echo "$repo" | jq -r '.name')
+			full_name=$(echo "$repo" | jq -r '.full_name')
+			# If this repo name is not present in the GitHub repos list, delete it.
+			if ! echo "$github_repo_names" | grep -Fxq "$repo_name"; then
+				if ! $DRY_RUN; then
+					echo -ne "${red}Deleting ${yellow}$FORGEJO_URL/$full_name${red} because the mirror source doesn't exist on GitHub anymore...${reset}"
+					curl -s -X DELETE -H "Authorization: token $FORGEJO_TOKEN" "$FORGEJO_URL/api/v1/repos/$full_name" >/dev/null
+					echo -e " ${green}Success!${reset}"
+				else
+					echo -e "${cyan}[DRY RUN] Would delete: $FORGEJO_URL/$full_name${reset}"
+				fi
+			fi
+		done
+	fi
 fi
 
 # -------------------------
@@ -301,101 +301,101 @@ fi
 # -------------------------
 repo_count=$(echo "$all_repos" | jq 'length')
 if [ "$repo_count" -eq 0 ]; then
-  echo "No repositories found for user $GITHUB_USER."
-  exit 0
+	echo "No repositories found for user $GITHUB_USER."
+	exit 0
 fi
 
 # Process each GitHub repo
 echo "$all_repos" | jq -c '.[]' | while read -r repo; do
-  repo_name=$(echo "$repo" | jq -r '.name')
-  html_url=$(echo "$repo" | jq -r '.html_url')
-  private_flag=$(echo "$repo" | jq -r '.private')
-  archived_flag=$(echo "$repo" | jq -r '.archived')
-  full_name=$(echo "$repo" | jq -r '.full_name')
-  fork_flag=$(echo "$repo" | jq -r '.fork')
+	repo_name=$(echo "$repo" | jq -r '.name')
+	html_url=$(echo "$repo" | jq -r '.html_url')
+	private_flag=$(echo "$repo" | jq -r '.private')
+	archived_flag=$(echo "$repo" | jq -r '.archived')
+	full_name=$(echo "$repo" | jq -r '.full_name')
+	fork_flag=$(echo "$repo" | jq -r '.fork')
 
-  # Skip forked repos if MIGRATE_FORKS is false
-  if [ "$fork_flag" = "true" ] && [ "$MIGRATE_FORKS" = false ]; then
-    echo -e "${yellow}Skipping fork: ${white}$repo_name${reset}"
-    continue
-  fi
+	# Skip forked repos if MIGRATE_FORKS is false
+	if [ "$fork_flag" = "true" ] && [ "$MIGRATE_FORKS" = false ]; then
+		echo -e "${yellow}Skipping fork: ${white}$repo_name${reset}"
+		continue
+	fi
 
-  # Prepare status message.
-  # Capitalize the strategy for display.
-  strategy_display="$(tr '[:lower:]' '[:upper:]' <<<"${STRATEGY:0:1}")${STRATEGY:1}"
-  if [ "$private_flag" = "true" ]; then
-    access_type="${red}private${reset}"
-  else
-    access_type="${green}public${reset}"
-  fi
-  echo -ne "${blue}${strategy_display}ing ${access_type} repository ${purple}$html_url${blue} to ${white}$FORGEJO_URL/$FORGEJO_USER/$repo_name${blue}...${reset}"
+	# Prepare status message.
+	# Capitalize the strategy for display.
+	strategy_display="$(tr '[:lower:]' '[:upper:]' <<<"${STRATEGY:0:1}")${STRATEGY:1}"
+	if [ "$private_flag" = "true" ]; then
+		access_type="${red}private${reset}"
+	else
+		access_type="${green}public${reset}"
+	fi
+	echo -ne "${blue}${strategy_display}ing ${access_type} repository ${purple}$html_url${blue} to ${white}$FORGEJO_URL/$FORGEJO_USER/$repo_name${blue}...${reset}"
 
-  # Determine which clone address to use.
-  if [ "$private_flag" = "true" ]; then
-    if [ -z "$GITHUB_TOKEN" ]; then
-      echo -e " ${red}Error: Private repo but no GitHub token provided!${reset}"
-      continue
-    fi
-  fi
-  # Always use the standard URL; authentication is passed via auth_token in the payload.
-  github_repo_url="$html_url"
+	# Determine which clone address to use.
+	if [ "$private_flag" = "true" ]; then
+		if [ -z "$GITHUB_TOKEN" ]; then
+			echo -e " ${red}Error: Private repo but no GitHub token provided!${reset}"
+			continue
+		fi
+	fi
+	# Always use the standard URL; authentication is passed via auth_token in the payload.
+	github_repo_url="$html_url"
 
-  # Set mirror flag for the migration API:
-  if [ "$STRATEGY" = "clone" ]; then
-    mirror=false
-  else
-    mirror=true
-  fi
+	# Set mirror flag for the migration API:
+	if [ "$STRATEGY" = "clone" ]; then
+		mirror=false
+	else
+		mirror=true
+	fi
 
-  # Build the JSON payload.
-  payload=$(jq -n \
-    --arg addr "$github_repo_url" \
-    --argjson mirror "$mirror" \
-    --argjson private "$private_flag" \
-    --arg owner "$FORGEJO_USER" \
-    --arg repo "$repo_name" \
-    --arg auth_token "$GITHUB_TOKEN" \
-    '{clone_addr: $addr, mirror: $mirror, private: $private, repo_owner: $owner, repo_name: $repo, auth_token: (if $auth_token != "" then $auth_token else null end)}')
+	# Build the JSON payload.
+	payload=$(jq -n \
+		--arg addr "$github_repo_url" \
+		--argjson mirror "$mirror" \
+		--argjson private "$private_flag" \
+		--arg owner "$FORGEJO_USER" \
+		--arg repo "$repo_name" \
+		--arg auth_token "$GITHUB_TOKEN" \
+		'{clone_addr: $addr, mirror: $mirror, private: $private, repo_owner: $owner, repo_name: $repo, auth_token: (if $auth_token != "" then $auth_token else null end)}')
 
-  if ! $DRY_RUN; then
-    # Send the POST request to the Forgejo migration endpoint.
-    response=$(curl -s -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$payload" "$FORGEJO_URL/api/v1/repos/migrate")
-    error_message=$(echo "$response" | jq -r '.message // empty')
+	if ! $DRY_RUN; then
+		# Send the POST request to the Forgejo migration endpoint.
+		response=$(curl -s -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$payload" "$FORGEJO_URL/api/v1/repos/migrate")
+		error_message=$(echo "$response" | jq -r '.message // empty')
 
-    success=false
-    if [[ "$error_message" == *"already exists"* ]]; then
-      echo -e " ${yellow}Already exists!${reset}"
-      success=true
-    elif [ -n "$error_message" ]; then
-      echo -e " ${red}Unknown error: $error_message${reset}"
-    else
-      echo -e " ${green}Success!${reset}"
-      success=true
-    fi
-  else
-    echo -e " ${cyan}[DRY RUN] Would migrate: $repo_name${reset}"
-    success=true
-  fi
+		success=false
+		if [[ "$error_message" == *"already exists"* ]]; then
+			echo -e " ${yellow}Already exists!${reset}"
+			success=true
+		elif [ -n "$error_message" ]; then
+			echo -e " ${red}Unknown error: $error_message${reset}"
+		else
+			echo -e " ${green}Success!${reset}"
+			success=true
+		fi
+	else
+		echo -e " ${cyan}[DRY RUN] Would migrate: $repo_name${reset}"
+		success=true
+	fi
 
-  # If migration succeeded (or already existed) and the repo is archived on GitHub,
-  # and the user wants to transfer archive status, patch the Forgejo repo.
-  if [ "$success" = true ] && [ "$archived_flag" = "true" ] && [ "$MIGRATE_ARCHIVE_STATUS" = true ]; then
-    if [ "$mirror" = true ]; then
-      echo -e "  ${yellow}Skipping archive status transfer (not supported for mirrors).${reset}"
-    else
-      if ! $DRY_RUN; then
-        echo -ne "  ${yellow}Archiving repository on Forgejo...${reset}"
-        patch_payload='{"archived": true}'
-        patch_response=$(curl -s -X PATCH -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$patch_payload" "$FORGEJO_URL/api/v1/repos/$FORGEJO_USER/$repo_name")
-        patch_error=$(echo "$patch_response" | jq -r '.message // empty')
-        if [ -n "$patch_error" ]; then
-          echo -e " ${red}Error: $patch_error${reset}"
-        else
-          echo -e " ${green}Done!${reset}"
-        fi
-      else
-        echo -e " ${cyan}[DRY RUN] Would archive: $repo_name${reset}"
-      fi
-    fi
-  fi
+	# If migration succeeded (or already existed) and the repo is archived on GitHub,
+	# and the user wants to transfer archive status, patch the Forgejo repo.
+	if [ "$success" = true ] && [ "$archived_flag" = "true" ] && [ "$MIGRATE_ARCHIVE_STATUS" = true ]; then
+		if [ "$mirror" = true ]; then
+			echo -e "  ${yellow}Skipping archive status transfer (not supported for mirrors).${reset}"
+		else
+			if ! $DRY_RUN; then
+				echo -ne "  ${yellow}Archiving repository on Forgejo...${reset}"
+				patch_payload='{"archived": true}'
+				patch_response=$(curl -s -X PATCH -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$patch_payload" "$FORGEJO_URL/api/v1/repos/$FORGEJO_USER/$repo_name")
+				patch_error=$(echo "$patch_response" | jq -r '.message // empty')
+				if [ -n "$patch_error" ]; then
+					echo -e " ${red}Error: $patch_error${reset}"
+				else
+					echo -e " ${green}Done!${reset}"
+				fi
+			else
+				echo -e " ${cyan}[DRY RUN] Would archive: $repo_name${reset}"
+			fi
+		fi
+	fi
 done
