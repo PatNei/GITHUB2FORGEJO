@@ -33,6 +33,29 @@ command_exists() {
 	fi
 }
 
+# Function: Wraps curl to validate exit code and non-empty response.
+# Parameters:
+#   $@ - All arguments are passed to curl
+# Output: curl stdout (response body)
+# Returns 0 on success (prints response to stdout), 1 on failure. Caller prints error message.
+safe_curl() {
+	local response
+	local curl_exit_code
+
+	response=$(curl -sS "$@")
+	curl_exit_code=$?
+
+	if [ $curl_exit_code -ne 0 ]; then
+		return 1
+	fi
+
+	if [ -z "$response" ]; then
+		return 1
+	fi
+
+	echo "$response"
+}
+
 command_exists bash
 command_exists curl
 command_exists jq
@@ -112,12 +135,15 @@ fi
 if [ -z "$GITHUB_IS_ORG" ]; then
 	echo -ne "${cyan}Checking account type for $GITHUB_USER...${reset}"
 	# Use token if available to avoid rate limits
-	auth_header=""
+	curl_args=()
 	if [ -n "$GITHUB_TOKEN" ]; then
-		auth_header="Authorization: token $GITHUB_TOKEN"
+		curl_args+=(-H "Authorization: token $GITHUB_TOKEN")
 	fi
 
-	api_response=$(curl -s -H "$auth_header" "https://api.github.com/users/$GITHUB_USER")
+	api_response=$(safe_curl "${curl_args[@]}" "https://api.github.com/users/$GITHUB_USER") || {
+		echo -e " ${red}Failed to reach GitHub API. Check network connectivity.${reset}" >&2
+		exit 1
+	}
 	account_type=$(echo "$api_response" | jq -r '.type')
 
 	if [[ "$account_type" == "Organization" ]]; then
@@ -221,7 +247,7 @@ page=1
 
 # Determine API endpoint and headers once
 repo_base_url="https://api.github.com/users/$GITHUB_USER/repos"
-curl_opts=(-s)
+curl_opts=()
 
 # Use authenticated user endpoint if token exists (and not overridden by Org)
 if [ -n "$GITHUB_TOKEN" ]; then
@@ -235,7 +261,10 @@ if $GITHUB_IS_ORG; then
 fi
 
 while true; do
-	response=$(curl "${curl_opts[@]}" "$repo_base_url?per_page=100&page=$page")
+	response=$(safe_curl "${curl_opts[@]}" "$repo_base_url?per_page=100&page=$page") || {
+		echo -e "${red}Failed to fetch GitHub repositories. Check network connectivity.${reset}" >&2
+		exit 1
+	}
 
 	# Check for API error messages
 	if echo "$response" | jq -e 'if type == "object" and .message then true else false end' >/dev/null; then
@@ -267,7 +296,10 @@ if $FORCE_SYNC; then
 	github_repo_names=$(echo "$all_repos" | jq -r '.[].name')
 
 	# Fetch Forgejo repos.
-	forgejo_response=$(curl -s -H "Authorization: token $FORGEJO_TOKEN" "$FORGEJO_URL/api/v1/user/repos")
+	forgejo_response=$(safe_curl -H "Authorization: token $FORGEJO_TOKEN" "$FORGEJO_URL/api/v1/user/repos") || {
+		echo -e "${red}Failed to fetch Forgejo repositories. Check FORGEJO_URL and network connectivity.${reset}" >&2
+		exit 1
+	}
 
 	# Filter to only those repos created via mirror; if no GitHub token provided, also filter out private repos.
 	if [ -z "$GITHUB_TOKEN" ]; then
@@ -286,8 +318,15 @@ if $FORCE_SYNC; then
 			if ! echo "$github_repo_names" | grep -Fxq "$repo_name"; then
 				if ! $DRY_RUN; then
 					echo -ne "${red}Deleting ${yellow}$FORGEJO_URL/$full_name${red} because the mirror source doesn't exist on GitHub anymore...${reset}"
-					curl -s -X DELETE -H "Authorization: token $FORGEJO_TOKEN" "$FORGEJO_URL/api/v1/repos/$full_name" >/dev/null
-					echo -e " ${green}Success!${reset}"
+					delete_response=$(curl -sS -w "%{http_code}" -o /dev/null -X DELETE -H "Authorization: token $FORGEJO_TOKEN" "$FORGEJO_URL/api/v1/repos/$full_name")
+					delete_exit_code=$?
+					if [ $delete_exit_code -ne 0 ]; then
+						echo -e " ${red}Failed (network error, curl exit code $delete_exit_code).${reset}"
+					elif [ "$delete_response" -ge 200 ] && [ "$delete_response" -lt 300 ]; then
+						echo -e " ${green}Success!${reset}"
+					else
+						echo -e " ${red}Failed (HTTP $delete_response).${reset}"
+					fi
 				else
 					echo -e "${cyan}[DRY RUN] Would delete: $FORGEJO_URL/$full_name${reset}"
 				fi
@@ -359,7 +398,10 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
 
 	if ! $DRY_RUN; then
 		# Send the POST request to the Forgejo migration endpoint.
-		response=$(curl -s -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$payload" "$FORGEJO_URL/api/v1/repos/migrate")
+		response=$(safe_curl -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$payload" "$FORGEJO_URL/api/v1/repos/migrate") || {
+			echo -e " ${red}Migration request failed.${reset}"
+			continue
+		}
 		error_message=$(echo "$response" | jq -r '.message // empty')
 
 		success=false
@@ -386,12 +428,15 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
 			if ! $DRY_RUN; then
 				echo -ne "  ${yellow}Archiving repository on Forgejo...${reset}"
 				patch_payload='{"archived": true}'
-				patch_response=$(curl -s -X PATCH -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$patch_payload" "$FORGEJO_URL/api/v1/repos/$FORGEJO_USER/$repo_name")
-				patch_error=$(echo "$patch_response" | jq -r '.message // empty')
-				if [ -n "$patch_error" ]; then
-					echo -e " ${red}Error: $patch_error${reset}"
+				if ! patch_response=$(safe_curl -X PATCH -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$patch_payload" "$FORGEJO_URL/api/v1/repos/$FORGEJO_USER/$repo_name"); then
+					echo -e " ${red}Archive request failed.${reset}"
 				else
-					echo -e " ${green}Done!${reset}"
+					patch_error=$(echo "$patch_response" | jq -r '.message // empty')
+					if [ -n "$patch_error" ]; then
+						echo -e " ${red}Error: $patch_error${reset}"
+					else
+						echo -e " ${green}Done!${reset}"
+					fi
 				fi
 			else
 				echo -e " ${cyan}[DRY RUN] Would archive: $repo_name${reset}"
