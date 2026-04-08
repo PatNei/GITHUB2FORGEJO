@@ -2,7 +2,9 @@
 # setup_and_test.sh - Automated Forgejo environment for testing migration script
 
 set -e
-CONTAINER_IMAGE="codeberg.org/forgejo/forgejo:14.0.0"
+# Using development build to test bug #9629 fix (PR #11909)
+# Will be updated to stable v15.0.0 when released on April 16, 2026
+CONTAINER_IMAGE="codeberg.org/forgejo-experimental/forgejo:15.0-test"
 CONTAINER_NAME="forgejo-test"
 HTTP_PORT=3000
 FORGEJO_USER="testuser"

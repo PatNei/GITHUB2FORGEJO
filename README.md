@@ -2,7 +2,9 @@
 > **Known Issue**: There is a [bug in Forgejo](https://codeberg.org/forgejo/forgejo/issues/9629)
 > where authentication credentials (personal access tokens) are not properly saved when
 > creating mirrors. The initial clone succeeds, but subsequent sync attempts fail.
-> Consider using the `clone` strategy as a workaround until this is fixed.
+> This bug is [fixed](https://codeberg.org/forgejo/forgejo/pulls/11909) and will be
+> included in the upcoming v15.0.0 LTS release (April 16, 2026).
+> Consider using the `clone` strategy as a workaround until then.
 
 > This script is inspired by and based on
 > [RGBCube's original version](https://github.com/RGBCube/GitHub2Forgejo),
