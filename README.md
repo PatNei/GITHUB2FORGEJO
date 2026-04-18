@@ -22,7 +22,7 @@ that no longer exist on GitHub.
 ## Features
 
 - Migrates all (or selected) repositories for a GitHub user or organization.
-- **Smart Detection**: Automatically detects if the account is a User or
+- **User or Org Detection**: Automatically detects if the account is a User or
   Organization.
 - Supports both **public** and **private** repositories.
 - **Mirror mode**: repositories stay in sync with GitHub.
