@@ -273,16 +273,25 @@ while true; do
 		exit 1
 	fi
 
-	# Filter repos so that only those whose owner.login matches GITHUB_USER are selected.
-	filtered=$(echo "$response" | jq --arg gu "$GITHUB_USER" 'if type == "array" then [.[] | select(.owner.login == $gu)] else [] end')
-	count=$(echo "$filtered" | jq 'length')
-	if [ "$count" -eq 0 ]; then
+	# Get total count of repos returned by the API (before filtering).
+	total_count=$(echo "$response" | jq 'if type == "array" then length else 0 end')
+
+	# If the API returned no repos at all, we're done paginating.
+	if [ "$total_count" -eq 0 ]; then
 		break
 	fi
-	# Merge this page with the existing JSON array:
-	all_repos=$(echo "$all_repos" "$filtered" | jq -s 'add')
-	# If we received less than 100 repos, we're done.
-	if [ "$count" -lt 100 ]; then
+
+	# Filter repos so that only those whose owner.login matches GITHUB_USER are selected.
+	filtered=$(echo "$response" | jq --arg gu "$GITHUB_USER" 'if type == "array" then [.[] | select(.owner.login == $gu)] else [] end')
+	filtered_count=$(echo "$filtered" | jq 'length')
+
+	# Merge matching repos with the existing JSON array (if any matched).
+	if [ "$filtered_count" -gt 0 ]; then
+		all_repos=$(echo "$all_repos" "$filtered" | jq -s 'add')
+	fi
+
+	# If we received less than 100 repos from the API, we've reached the last page.
+	if [ "$total_count" -lt 100 ]; then
 		break
 	fi
 	page=$((page + 1))
