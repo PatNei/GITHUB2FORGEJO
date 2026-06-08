@@ -13,6 +13,8 @@
 #   FORCE_SYNC: Whether to delete repositories on Forgejo that no longer exist on GitHub.
 #              Answer Yes (to delete) or No.
 #   VISIBILITY: Which repositories to migrate by visibility: "private", "public", or "both" (default).
+#   SORT: Sort repositories by "created", "updated", "pushed", or "full_name" (default: "pushed").
+#   SORT_DIRECTION: Sort direction, "asc" or "desc" (default: "desc").
 
 # Define some color codes for output.
 red=$(tput setaf 1)
@@ -247,6 +249,30 @@ echo -e "${green}Migrate forks is set to: ${MIGRATE_FORKS}${reset}"
 echo -e "${green}Visibility is set to: ${VISIBILITY}${reset}"
 echo -e "${green}Dry run is set to: ${DRY_RUN}${reset}"
 
+# Get the SORT setting from the environment or via prompt.
+SORT=$(or_default "$SORT" "${yellow}Sort repositories by (created/updated/pushed/full_name):${reset}" "pushed")
+
+# Clean up SORT input.
+SORT="$(echo "$SORT" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
+
+if [[ "$SORT" != "created" && "$SORT" != "updated" && "$SORT" != "pushed" && "$SORT" != "full_name" ]]; then
+	echo -e "${red}Error: SORT must be 'created', 'updated', 'pushed', or 'full_name'.${reset}" >&2
+	exit 1
+fi
+
+# Get the SORT_DIRECTION setting from the environment or via prompt.
+SORT_DIRECTION=$(or_default "$SORT_DIRECTION" "${yellow}Sort direction (asc/desc):${reset}" "desc")
+
+# Clean up SORT_DIRECTION input.
+SORT_DIRECTION="$(echo "$SORT_DIRECTION" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
+
+if [[ "$SORT_DIRECTION" != "asc" && "$SORT_DIRECTION" != "desc" ]]; then
+	echo -e "${red}Error: SORT_DIRECTION must be 'asc' or 'desc'.${reset}" >&2
+	exit 1
+fi
+
+echo -e "${green}Sort is set to: ${SORT} (${SORT_DIRECTION})${reset}"
+
 if $DRY_RUN; then
 	echo -e "${cyan}=== DRY RUN MODE ===${reset}"
 	echo -e "${cyan}No changes will be made. Previewing actions only.${reset}"
@@ -283,7 +309,7 @@ elif [[ "$VISIBILITY" == "private" ]]; then
 fi
 
 while true; do
-	response=$(safe_curl "${curl_opts[@]}" "${repo_base_url}?per_page=100&page=${page}${visibility_param}") || {
+	response=$(safe_curl "${curl_opts[@]}" "${repo_base_url}?per_page=100&page=${page}${visibility_param}&sort=${SORT}&direction=${SORT_DIRECTION}") || {
 		echo -e "${red}Failed to fetch GitHub repositories. Check network connectivity.${reset}" >&2
 		exit 1
 	}

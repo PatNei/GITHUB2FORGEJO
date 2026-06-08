@@ -99,6 +99,8 @@ fi
 strategies=("mirror" "clone")
 booleans=("Yes" "No")
 visibilities=("private" "public" "both")
+sorts=("created" "updated" "pushed" "full_name")
+directions=("asc" "desc")
 
 # Run combinations in DRY_RUN first
 export DRY_RUN="Yes"
@@ -107,14 +109,20 @@ for strategy in "${strategies[@]}"; do
 		for migrate_archive in "${booleans[@]}"; do
 			for migrate_fork in "${booleans[@]}"; do
 				for visibility in "${visibilities[@]}"; do
-					echo "================================================================"
-					echo "Testing DRY RUN: STRATEGY=$strategy FORCE_SYNC=$force_sync MIGRATE_ARCHIVE=$migrate_archive MIGRATE_FORKS=$migrate_fork VISIBILITY=$visibility"
-					export STRATEGY="$strategy"
-					export FORCE_SYNC="$force_sync"
-					export MIGRATE_ARCHIVE_STATUS="$migrate_archive"
-					export MIGRATE_FORKS="$migrate_fork"
-					export VISIBILITY="$visibility"
-					bash github-forgejo-migrate.sh
+					for sort in "${sorts[@]}"; do
+						for direction in "${directions[@]}"; do
+							echo "================================================================"
+							echo "Testing DRY RUN: STRATEGY=$strategy FORCE_SYNC=$force_sync MIGRATE_ARCHIVE=$migrate_archive MIGRATE_FORKS=$migrate_fork VISIBILITY=$visibility SORT=$sort SORT_DIRECTION=$direction"
+							export STRATEGY="$strategy"
+							export FORCE_SYNC="$force_sync"
+							export MIGRATE_ARCHIVE_STATUS="$migrate_archive"
+							export MIGRATE_FORKS="$migrate_fork"
+							export VISIBILITY="$visibility"
+							export SORT="$sort"
+							export SORT_DIRECTION="$direction"
+							bash github-forgejo-migrate.sh
+						done
+					done
 				done
 			done
 			done
@@ -129,6 +137,8 @@ export FORCE_SYNC="No"
 export MIGRATE_ARCHIVE_STATUS="Yes"
 export MIGRATE_FORKS="Yes"
 export VISIBILITY="both"
+export SORT="pushed"
+export SORT_DIRECTION="desc"
 bash github-forgejo-migrate.sh
 
 echo "--------------------------------------------------"
