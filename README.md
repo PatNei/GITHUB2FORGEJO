@@ -22,12 +22,13 @@ that no longer exist on GitHub.
 - Migrates all (or selected) repositories for a GitHub user or organization.
 - **User or Org Detection**: Automatically detects if the account is a User or
   Organization.
-- Supports both **public** and **private** repositories.
+- Supports selecting **public**, **private**, or **both** repository visibilities.
 - **Mirror mode**: repositories stay in sync with GitHub.
 - **Clone mode**: one-time copy without ongoing sync.
 - **Archive Transfer**: Optionally transfers the archived status so archived
   repos remain read-only on Forgejo.
 - **Skip Forks**: Option to ignore forked repositories during migration.
+- **Visibility Filter**: Migrate only private, only public, or all repositories.
 - **Dry Run Mode**: Preview what would happen without making changes.
 - Optional cleanup of outdated mirrors on Forgejo.
 - Fully terminal-interactive or configurable via environment variables.
@@ -65,6 +66,7 @@ variables:
 | `FORCE_SYNC`             | Set to `Yes` to delete Forgejo repos that no longer exist on GitHub             |
 | `MIGRATE_ARCHIVE_STATUS` | Set to `Yes` (default) to transfer the archived status of repositories          |
 | `MIGRATE_FORKS`          | Set to `No` to skip fork repositories during migration (default: `Yes`)         |
+| `VISIBILITY`             | Filter by visibility: `private`, `public`, or `both` (default: `both`)          |
 | `DRY_RUN`                | Set to `Yes` to preview actions without executing (dry run mode, default: `No`) |
 
 ### 2. Automated Development & Testing Environment

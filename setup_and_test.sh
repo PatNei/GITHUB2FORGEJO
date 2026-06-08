@@ -98,6 +98,7 @@ fi
 
 strategies=("mirror" "clone")
 booleans=("Yes" "No")
+visibilities=("private" "public" "both")
 
 # Run combinations in DRY_RUN first
 export DRY_RUN="Yes"
@@ -105,15 +106,18 @@ for strategy in "${strategies[@]}"; do
 	for force_sync in "${booleans[@]}"; do
 		for migrate_archive in "${booleans[@]}"; do
 			for migrate_fork in "${booleans[@]}"; do
-				echo "================================================================"
-				echo "Testing DRY RUN: STRATEGY=$strategy FORCE_SYNC=$force_sync MIGRATE_ARCHIVE=$migrate_archive MIGRATE_FORKS=$migrate_fork"
-				export STRATEGY="$strategy"
-				export FORCE_SYNC="$force_sync"
-				export MIGRATE_ARCHIVE_STATUS="$migrate_archive"
-				export MIGRATE_FORKS="$migrate_fork"
-				bash github-forgejo-migrate.sh
+				for visibility in "${visibilities[@]}"; do
+					echo "================================================================"
+					echo "Testing DRY RUN: STRATEGY=$strategy FORCE_SYNC=$force_sync MIGRATE_ARCHIVE=$migrate_archive MIGRATE_FORKS=$migrate_fork VISIBILITY=$visibility"
+					export STRATEGY="$strategy"
+					export FORCE_SYNC="$force_sync"
+					export MIGRATE_ARCHIVE_STATUS="$migrate_archive"
+					export MIGRATE_FORKS="$migrate_fork"
+					export VISIBILITY="$visibility"
+					bash github-forgejo-migrate.sh
+				done
 			done
-		done
+			done
 	done
 done
 
@@ -124,6 +128,7 @@ export STRATEGY="mirror"
 export FORCE_SYNC="No"
 export MIGRATE_ARCHIVE_STATUS="Yes"
 export MIGRATE_FORKS="Yes"
+export VISIBILITY="both"
 bash github-forgejo-migrate.sh
 
 echo "--------------------------------------------------"

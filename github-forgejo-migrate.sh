@@ -12,6 +12,7 @@
 #             "clone" will only clone once.
 #   FORCE_SYNC: Whether to delete repositories on Forgejo that no longer exist on GitHub.
 #              Answer Yes (to delete) or No.
+#   VISIBILITY: Which repositories to migrate by visibility: "private", "public", or "both" (default).
 
 # Define some color codes for output.
 red=$(tput setaf 1)
@@ -217,6 +218,17 @@ else
 	MIGRATE_FORKS=false
 fi
 
+# Get the VISIBILITY setting from the environment or via prompt.
+VISIBILITY=$(or_default "$VISIBILITY" "${yellow}Which repositories to migrate? (private/public/both):${reset}" "both")
+
+# Clean up VISIBILITY input.
+VISIBILITY="$(echo "$VISIBILITY" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
+
+if [[ "$VISIBILITY" != "private" && "$VISIBILITY" != "public" && "$VISIBILITY" != "both" ]]; then
+	echo -e "${red}Error: VISIBILITY must be 'private', 'public', or 'both'.${reset}" >&2
+	exit 1
+fi
+
 # Get the DRY_RUN setting from the environment or via prompt.
 DRY_RUN=$(or_default "$DRY_RUN" "${yellow}Preview actions without executing (dry run)? (Yes/No):${reset}" "No")
 
@@ -232,6 +244,7 @@ fi
 echo -e "${green}Force sync is set to: ${FORCE_SYNC}${reset}"
 echo -e "${green}Migrate archive status is set to: ${MIGRATE_ARCHIVE_STATUS}${reset}"
 echo -e "${green}Migrate forks is set to: ${MIGRATE_FORKS}${reset}"
+echo -e "${green}Visibility is set to: ${VISIBILITY}${reset}"
 echo -e "${green}Dry run is set to: ${DRY_RUN}${reset}"
 
 if $DRY_RUN; then
@@ -260,8 +273,17 @@ if $GITHUB_IS_ORG; then
 	repo_base_url="https://api.github.com/orgs/$GITHUB_USER/repos"
 fi
 
+# Build the visibility query parameter for the GitHub API.
+# The API supports type=public, type=private, or type=all on repo listing endpoints.
+visibility_param=""
+if [[ "$VISIBILITY" == "public" ]]; then
+	visibility_param="&type=public"
+elif [[ "$VISIBILITY" == "private" ]]; then
+	visibility_param="&type=private"
+fi
+
 while true; do
-	response=$(safe_curl "${curl_opts[@]}" "$repo_base_url?per_page=100&page=$page") || {
+	response=$(safe_curl "${curl_opts[@]}" "${repo_base_url}?per_page=100&page=${page}${visibility_param}") || {
 		echo -e "${red}Failed to fetch GitHub repositories. Check network connectivity.${reset}" >&2
 		exit 1
 	}
