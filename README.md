@@ -74,9 +74,6 @@ variables:
 | `SORT_DIRECTION`         | Sort direction: `asc` or `desc` (default: `desc`)                                 |
 | `DRY_RUN`                | Set to `Yes` to preview actions without executing (dry run mode, default: `No`)   |
 
-> [!NOTE]
-> The sort order returned by the GitHub API is preserved through the entire migration pipeline — repos are migrated in the exact order requested. Note that `full_name` uses case-sensitive ASCII ordering (e.g. `Z` sorts before `a`), which is a GitHub API limitation.
-
 ### 2. Automated Development & Testing Environment
 
 If you want to test the script without setting up a real Forgejo instance, you
@@ -120,29 +117,6 @@ Each file spins up its own Forgejo container and tears it down after.
 ./setup_and_test.sh                                # validation only
 GITHUB_USER=you GITHUB_TOKEN=ghp_xxx ./setup_and_test.sh  # everything
 ```
-
-#### Manual Testing with Docker
-
-1. **Configure Environment**: Create a `.env` file (or use `direnv` with the
-   provided `.envrc`):
-   ```bash
-   cp .envrc.example .env
-   # Edit .env and add your GITHUB_USER and GITHUB_TOKEN
-   ```
-
-2. **Launch Environment and Run Migration**:
-   ```bash
-   ./setup_and_test.sh
-   ```
-   This script will:
-   - Launch a Forgejo container on `http://localhost:3000`.
-   - Create an admin user (`testuser`).
-   - Generate a Forgejo token and save it to your `.env`.
-   - Automatically execute the migration script.
-
-3. **Inspect Results**: Visit `http://localhost:3000` and log in with:
-   - **User**: `testuser`
-   - **Password**: `Password123!`
 
 ### Generate `GITHUB_TOKEN`
 
@@ -205,8 +179,9 @@ token**.
 
 ### ❓ What is the difference between mirroring and cloning?
 
-- **Mirroring**: Keeps the Forgejo repository in sync with the GitHub source.
-- **Cloning**: Copies the repo once. No updates will occur after that.
+- **Mirror pull** (`MIRROR_DIRECTION=pull`): Forgejo periodically fetches updates from GitHub. The GitHub repo is the source of truth.
+- **Mirror push** (`MIRROR_DIRECTION=push`): Forgejo pushes local changes back to GitHub. The Forgejo repo is the source of truth.
+- **Cloning** (`STRATEGY=clone`): One-time copy. No ongoing sync.
 
 ### ❓ Can I migrate specific repositories?
 
@@ -215,6 +190,13 @@ limit the scope by using a **GitHub Fine-grained Personal Access Token**. When
 creating the token, select **"Only select repositories"** instead of "All
 repositories". The script will then only see and migrate the repositories you
 explicitly selected.
+
+### ❓ What about the sort order?
+
+The sort order returned by the GitHub API is preserved through the entire
+migration pipeline — repos are migrated in the exact order requested. Note that
+`full_name` uses case-sensitive ASCII ordering (e.g. `Z` sorts before `a`),
+which is a GitHub API limitation.
 
 ## License
 
