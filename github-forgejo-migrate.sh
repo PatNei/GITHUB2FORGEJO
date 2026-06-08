@@ -8,8 +8,10 @@
 #   FORGEJO_URL: The Forgejo instance URL (include the protocol, e.g. https://forgejo.example.com).
 #   FORGEJO_USER: The Forgejo user/organization to migrate to.
 #   FORGEJO_TOKEN: A Forgejo access token.
-#   STRATEGY: Either "mirror" or "clone". "mirrored" will create a mirror (which Forgejo will update periodically),
-#             "clone" will only clone once.
+#   STRATEGY: Either "mirror" or "clone". "mirror" will create a mirror, "clone" will only clone once.
+#   MIRROR_DIRECTION: When STRATEGY=mirror, direction of sync: "pull" (GitHub→Forgejo, default) or "push" (Forgejo→GitHub).
+#   PUSH_MIRROR_INTERVAL: How often push mirrors sync (default: "8h"). Only used when MIRROR_DIRECTION=push.
+#   PUSH_MIRROR_SYNC_ON_COMMIT: Push mirrors sync immediately on commit (Yes/No, default: Yes). Only when MIRROR_DIRECTION=push.
 #   FORCE_SYNC: Whether to delete repositories on Forgejo that no longer exist on GitHub.
 #              Answer Yes (to delete) or No.
 #   VISIBILITY: Which repositories to migrate by visibility: "private", "public", or "both" (default).
@@ -183,6 +185,41 @@ if [[ "$STRATEGY" != "mirror" && "$STRATEGY" != "clone" ]]; then
 	echo -e "${red}Error: Strategy must be either 'mirror' or 'clone'.${reset}" >&2
 	exit 1
 fi
+
+# Get the MIRROR_DIRECTION setting from the environment or via prompt.
+MIRROR_DIRECTION=$(or_default "$MIRROR_DIRECTION" "${cyan}Mirror direction (pull/push):${reset}" "pull")
+
+# Convert MIRROR_DIRECTION to lowercase.
+MIRROR_DIRECTION="$(echo "$MIRROR_DIRECTION" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
+
+# Validate MIRROR_DIRECTION input.
+if [[ "$MIRROR_DIRECTION" != "pull" && "$MIRROR_DIRECTION" != "push" ]]; then
+	echo -e "${red}Error: MIRROR_DIRECTION must be either 'pull' or 'push'.${reset}" >&2
+	exit 1
+fi
+
+# MIRROR_DIRECTION only applies when STRATEGY=mirror.
+if [[ "$STRATEGY" != "mirror" && "$MIRROR_DIRECTION" != "pull" ]]; then
+	echo -e "${yellow}Note: MIRROR_DIRECTION is ignored when STRATEGY is not 'mirror'.${reset}"
+fi
+
+# MIRROR_DIRECTION=push requires a GitHub token to push back to GitHub.
+if [[ "$STRATEGY" == "mirror" && "$MIRROR_DIRECTION" == "push" && -z "$GITHUB_TOKEN" ]]; then
+	echo -e "${red}Error: MIRROR_DIRECTION=push requires GITHUB_TOKEN to push back to GitHub.${reset}" >&2
+	exit 1
+fi
+
+# Get the PUSH_MIRROR_INTERVAL setting (only relevant for push mirrors).
+PUSH_MIRROR_INTERVAL=$(or_default "$PUSH_MIRROR_INTERVAL" "${cyan}Push mirror sync interval (e.g. 8h, 1h, 30m):${reset}" "8h")
+
+# Get the PUSH_MIRROR_SYNC_ON_COMMIT setting.
+PUSH_MIRROR_SYNC_ON_COMMIT=$(or_default "$PUSH_MIRROR_SYNC_ON_COMMIT" "${cyan}Sync push mirror on every commit? (Yes/No):${reset}" "Yes")
+PUSH_MIRROR_SYNC_ON_COMMIT="$(echo "$PUSH_MIRROR_SYNC_ON_COMMIT" | tr -d '\n' | tr '[:upper:]' '[:lower:]')"
+if [[ "$PUSH_MIRROR_SYNC_ON_COMMIT" =~ ^y(es)?$ ]]; then
+	PUSH_MIRROR_SYNC_ON_COMMIT=true
+else
+	PUSH_MIRROR_SYNC_ON_COMMIT=false
+fi
 # Get the FORCE_SYNC setting from the environment or via prompt.
 FORCE_SYNC=$(or_default "$FORCE_SYNC" "${yellow}Should mirrored repos that don't have a GitHub source anymore be deleted? (Yes/No):${reset}" "No")
 
@@ -248,6 +285,13 @@ echo -e "${green}Migrate archive status is set to: ${MIGRATE_ARCHIVE_STATUS}${re
 echo -e "${green}Migrate forks is set to: ${MIGRATE_FORKS}${reset}"
 echo -e "${green}Visibility is set to: ${VISIBILITY}${reset}"
 echo -e "${green}Dry run is set to: ${DRY_RUN}${reset}"
+if [[ "$STRATEGY" == "mirror" ]]; then
+	echo -e "${green}Mirror direction is set to: ${MIRROR_DIRECTION}${reset}"
+	if [[ "$MIRROR_DIRECTION" == "push" ]]; then
+		echo -e "${green}Push mirror interval is set to: ${PUSH_MIRROR_INTERVAL}${reset}"
+		echo -e "${green}Push mirror sync on commit is set to: ${PUSH_MIRROR_SYNC_ON_COMMIT}${reset}"
+	fi
+fi
 
 # Get the SORT setting from the environment or via prompt.
 SORT=$(or_default "$SORT" "${yellow}Sort repositories by (created/updated/pushed/full_name):${reset}" "pushed")
@@ -437,7 +481,12 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
 	github_repo_url="$html_url"
 
 	# Set mirror flag for the migration API:
+	# - STRATEGY=clone: mirror=false (one-time copy)
+	# - STRATEGY=mirror + MIRROR_DIRECTION=pull: mirror=true (Forgejo pulls from GitHub)
+	# - STRATEGY=mirror + MIRROR_DIRECTION=push: mirror=false (clone first, then add push mirror)
 	if [ "$STRATEGY" = "clone" ]; then
+		mirror=false
+	elif [ "$MIRROR_DIRECTION" = "push" ]; then
 		mirror=false
 	else
 		mirror=true
@@ -480,7 +529,7 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
 	# and the user wants to transfer archive status, patch the Forgejo repo.
 	if [ "$success" = true ] && [ "$archived_flag" = "true" ] && [ "$MIGRATE_ARCHIVE_STATUS" = true ]; then
 		if [ "$mirror" = true ]; then
-			echo -e "  ${yellow}Skipping archive status transfer (not supported for mirrors).${reset}"
+			echo -e "  ${yellow}Skipping archive status transfer (not supported for pull mirrors).${reset}"
 		else
 			if ! $DRY_RUN; then
 				echo -ne "  ${yellow}Archiving repository on Forgejo...${reset}"
@@ -498,6 +547,33 @@ echo "$all_repos" | jq -c '.[]' | while read -r repo; do
 			else
 				echo -e " ${cyan}[DRY RUN] Would archive: $repo_name${reset}"
 			fi
+		fi
+	fi
+
+	# Set up push mirror if requested (after successful migration or if repo already exists).
+	if [ "$success" = true ] && [ "$STRATEGY" = "mirror" ] && [ "$MIRROR_DIRECTION" = "push" ]; then
+		if ! $DRY_RUN; then
+			echo -ne "  ${yellow}Setting up push mirror to GitHub...${reset}"
+			push_mirror_payload=$(jq -n \
+				--arg remote_address "$github_repo_url" \
+				--arg remote_username "$GITHUB_USER" \
+				--arg remote_password "$GITHUB_TOKEN" \
+				--arg interval "$PUSH_MIRROR_INTERVAL" \
+				--argjson sync_on_commit "$PUSH_MIRROR_SYNC_ON_COMMIT" \
+				'{remote_address: $remote_address, remote_username: $remote_username, remote_password: $remote_password, interval: $interval, sync_on_commit: $sync_on_commit}')
+
+			push_mirror_response=$(safe_curl -H "Content-Type: application/json" -H "Authorization: token $FORGEJO_TOKEN" -d "$push_mirror_payload" "$FORGEJO_URL/api/v1/repos/$FORGEJO_USER/$repo_name/push_mirrors") || {
+				echo -e " ${red}Push mirror request failed.${reset}"
+				continue
+			}
+			push_mirror_error=$(echo "$push_mirror_response" | jq -r '.message // empty')
+			if [ -n "$push_mirror_error" ]; then
+				echo -e " ${red}Error: $push_mirror_error${reset}"
+			else
+				echo -e " ${green}Done!${reset}"
+			fi
+		else
+			echo -e " ${cyan}[DRY RUN] Would set up push mirror: $repo_name → $github_repo_url${reset}"
 		fi
 	fi
 done

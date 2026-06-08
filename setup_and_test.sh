@@ -101,6 +101,7 @@ booleans=("Yes" "No")
 visibilities=("private" "public" "both")
 sorts=("created" "updated" "pushed" "full_name")
 directions=("asc" "desc")
+mirror_directions=("pull" "push")
 
 # Run combinations in DRY_RUN first
 export DRY_RUN="Yes"
@@ -111,17 +112,22 @@ for strategy in "${strategies[@]}"; do
 				for visibility in "${visibilities[@]}"; do
 					for sort in "${sorts[@]}"; do
 						for direction in "${directions[@]}"; do
+						for mirror_dir in "${mirror_directions[@]}"; do
 							echo "================================================================"
-							echo "Testing DRY RUN: STRATEGY=$strategy FORCE_SYNC=$force_sync MIGRATE_ARCHIVE=$migrate_archive MIGRATE_FORKS=$migrate_fork VISIBILITY=$visibility SORT=$sort SORT_DIRECTION=$direction"
+							echo "Testing DRY RUN: STRATEGY=$strategy MIRROR_DIRECTION=$mirror_dir FORCE_SYNC=$force_sync MIGRATE_ARCHIVE=$migrate_archive MIGRATE_FORKS=$migrate_fork VISIBILITY=$visibility SORT=$sort SORT_DIRECTION=$direction"
 							export STRATEGY="$strategy"
+							export MIRROR_DIRECTION="$mirror_dir"
 							export FORCE_SYNC="$force_sync"
 							export MIGRATE_ARCHIVE_STATUS="$migrate_archive"
 							export MIGRATE_FORKS="$migrate_fork"
 							export VISIBILITY="$visibility"
 							export SORT="$sort"
 							export SORT_DIRECTION="$direction"
+							export PUSH_MIRROR_INTERVAL="8h"
+							export PUSH_MIRROR_SYNC_ON_COMMIT="Yes"
 							bash github-forgejo-migrate.sh
 						done
+					done
 					done
 				done
 			done
@@ -139,6 +145,9 @@ export MIGRATE_FORKS="Yes"
 export VISIBILITY="both"
 export SORT="pushed"
 export SORT_DIRECTION="desc"
+export MIRROR_DIRECTION="pull"
+export PUSH_MIRROR_INTERVAL="8h"
+export PUSH_MIRROR_SYNC_ON_COMMIT="Yes"
 bash github-forgejo-migrate.sh
 
 echo "--------------------------------------------------"

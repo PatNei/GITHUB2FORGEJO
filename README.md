@@ -63,6 +63,9 @@ variables:
 | `FORGEJO_USER`           | Forgejo username or organization to own the migrated repos                        |
 | `FORGEJO_TOKEN`          | Forgejo personal access token                                                     |
 | `STRATEGY`               | Either `mirror` (default) or `clone`                                              |
+| `MIRROR_DIRECTION`       | When `mirror`: `pull` (GitHub→Forgejo, default) or `push` (Forgejo→GitHub)        |
+| `PUSH_MIRROR_INTERVAL`   | Push mirror sync interval, e.g. `8h`, `1h` (default: `8h`). Push mirrors only    |
+| `PUSH_MIRROR_SYNC_ON_COMMIT` | Sync push mirror on every commit (default: `Yes`). Push mirrors only          |
 | `FORCE_SYNC`             | Set to `Yes` to delete Forgejo repos that no longer exist on GitHub               |
 | `MIGRATE_ARCHIVE_STATUS` | Set to `Yes` (default) to transfer the archived status of repositories            |
 | `MIGRATE_FORKS`          | Set to `No` to skip fork repositories during migration (default: `Yes`)           |
