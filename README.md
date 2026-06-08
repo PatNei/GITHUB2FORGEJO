@@ -82,6 +82,47 @@ variables:
 If you want to test the script without setting up a real Forgejo instance, you
 can use the provided Docker environment.
 
+#### Validation Tests (no Docker required)
+
+```bash
+bats test/validation.bats
+```
+
+Input validation, default values, and settings summary output.
+No credentials needed.
+
+#### E2E Tests (requires Docker + GitHub credentials)
+
+The E2E tests migrate repos from your GitHub account into a throwaway Forgejo
+container. They assume your test account has a mix of repo types:
+
+- At least one **public** and one **private** repo
+- At least one **forked** repo
+- At least one **archived** repo
+
+```bash
+GITHUB_USER=youruser GITHUB_TOKEN=ghp_xxx bats test/
+```
+
+Or run individual suites:
+
+```bash
+bats test/strategy.bats     # clone, mirror pull, mirror push
+bats test/visibility.bats   # public, private, both
+bats test/options.bats      # dry-run, forks, archive, sort, force-sync
+```
+
+Each file spins up its own Forgejo container and tears it down after.
+
+#### Full suite
+
+```bash
+./setup_and_test.sh                                # validation only
+GITHUB_USER=you GITHUB_TOKEN=ghp_xxx ./setup_and_test.sh  # everything
+```
+
+#### Manual Testing with Docker
+
 1. **Configure Environment**: Create a `.env` file (or use `direnv` with the
    provided `.envrc`):
    ```bash

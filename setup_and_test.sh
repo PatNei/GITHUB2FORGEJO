@@ -1,166 +1,39 @@
 #!/usr/bin/env bash
-# setup_and_test.sh - Automated Forgejo environment for testing migration script
+# setup_and_test.sh — Run the full test suite
+#
+# Usage:
+#   ./setup_and_test.sh                                         # validation only
+#   GITHUB_USER=you GITHUB_TOKEN=ghp_xxx ./setup_and_test.sh   # all tests
+#
+# Individual test files:
+#   bats test/validation.bats    # input validation, no Docker
+#   bats test/strategy.bats      # clone, mirror pull, mirror push
+#   bats test/visibility.bats    # public, private, both
+#   bats test/options.bats       # dry-run, forks, archive, sort, force-sync
 
 set -e
-# Using development build to test bug #9629 fix (PR #11909)
-# Will be updated to stable v15.0.0 when released on April 16, 2026
-CONTAINER_IMAGE="codeberg.org/forgejo-experimental/forgejo:15.0-test"
-CONTAINER_NAME="forgejo-test"
-HTTP_PORT=3000
-FORGEJO_USER="testuser"
-FORGEJO_PASS="Password123!"
-FORGEJO_EMAIL="test@example.com"
-TOKEN_NAME="test-token-$(date +%s)"
 
-# Cleanup previous runs
-if [ "$(docker ps -aq -f name=$CONTAINER_NAME)" ]; then
-	echo "Cleaning up existing container..."
-	docker rm -f $CONTAINER_NAME
+echo "=== Validation tests (no Docker) ==="
+bats test/validation.bats
+
+if [ -z "$GITHUB_USER" ] || [ -z "$GITHUB_TOKEN" ]; then
+	echo ""
+	echo "GITHUB_USER or GITHUB_TOKEN not set — skipping E2E tests."
+	echo "To run all tests: GITHUB_USER=you GITHUB_TOKEN=ghp_xxx $0"
+	exit 0
 fi
-
-echo "Starting Forgejo container..."
-# Using environment variables to bypass the installation wizard
-docker run -d --name "$CONTAINER_NAME" \
-	-p "$HTTP_PORT:3000" \
-	-e "FORGEJO__security__INSTALL_LOCK=true" \
-	-e "FORGEJO__database__DB_TYPE=sqlite3" \
-	-e "FORGEJO__server__OFFLINE_MODE=false" \
-	$CONTAINER_IMAGE
-
-echo "Waiting for Forgejo to be ready..."
-MAX_RETRIES=30
-COUNT=0
-until curl -s "http://localhost:$HTTP_PORT/" >/dev/null; do
-	sleep 2
-	COUNT=$((COUNT + 1))
-	if [ $COUNT -ge $MAX_RETRIES ]; then
-		echo "Forgejo failed to start in time."
-		docker logs $CONTAINER_NAME
-		exit 1
-	fi
-	echo -n "."
-done
-echo " Ready!"
-
-echo "Creating admin user: $FORGEJO_USER"
-docker exec -u 1000 "$CONTAINER_NAME" forgejo admin user create \
-	--username "$FORGEJO_USER" \
-	--password "$FORGEJO_PASS" \
-	--email "$FORGEJO_EMAIL" \
-	--admin --must-change-password=false
-
-echo "Generating access token..."
-FORGEJO_TOKEN=$(docker exec -u 1000 "$CONTAINER_NAME" forgejo admin user generate-access-token \
-	--username "$FORGEJO_USER" \
-	--token-name "$TOKEN_NAME" \
-	--scopes all \
-	--raw)
-
-if [ -z "$FORGEJO_TOKEN" ]; then
-	echo "Failed to generate Forgejo token."
-	exit 1
-fi
-
-export FORGEJO_URL="http://localhost:$HTTP_PORT"
-export FORGEJO_USER="$FORGEJO_USER"
-export FORGEJO_TOKEN="$FORGEJO_TOKEN"
-
-# Update .env for direnv support
-touch .env
-grep -v "^FORGEJO_" .env >.env.tmp || true
-{
-	cat .env.tmp
-	echo "FORGEJO_URL=\"$FORGEJO_URL\""
-	echo "FORGEJO_USER=\"$FORGEJO_USER\""
-	echo "FORGEJO_TOKEN=\"$FORGEJO_TOKEN\""
-} >.env
-rm .env.tmp
-
-if command -v direnv >/dev/null 2>&1; then
-	echo "Updating direnv..."
-	direnv allow . || true
-fi
-
-echo "--------------------------------------------------"
-echo "Forgejo is ready!"
-echo "URL: $FORGEJO_URL"
-echo "User: $FORGEJO_USER"
-echo "Token: $FORGEJO_TOKEN"
-echo "--------------------------------------------------"
-echo "Now running github-forgejo-migrate.sh testing all option combinations"
-echo "Note: You may be prompted for GITHUB_USER and GITHUB_TOKEN if they are not in your environment."
-echo "--------------------------------------------------"
-
-if [ -z "$GITHUB_USER" ]; then
-	read -r -p "Enter GITHUB_USER for testing (e.g. your username): " GITHUB_USER
-	export GITHUB_USER
-fi
-
-strategies=("mirror" "clone")
-booleans=("Yes" "No")
-visibilities=("private" "public" "both")
-sorts=("created" "updated" "pushed" "full_name")
-directions=("asc" "desc")
-mirror_directions=("pull" "push")
-
-# Run combinations in DRY_RUN first
-export DRY_RUN="Yes"
-for strategy in "${strategies[@]}"; do
-	for force_sync in "${booleans[@]}"; do
-		for migrate_archive in "${booleans[@]}"; do
-			for migrate_fork in "${booleans[@]}"; do
-				for visibility in "${visibilities[@]}"; do
-					for sort in "${sorts[@]}"; do
-						for direction in "${directions[@]}"; do
-						for mirror_dir in "${mirror_directions[@]}"; do
-							echo "================================================================"
-							echo "Testing DRY RUN: STRATEGY=$strategy MIRROR_DIRECTION=$mirror_dir FORCE_SYNC=$force_sync MIGRATE_ARCHIVE=$migrate_archive MIGRATE_FORKS=$migrate_fork VISIBILITY=$visibility SORT=$sort SORT_DIRECTION=$direction"
-							export STRATEGY="$strategy"
-							export MIRROR_DIRECTION="$mirror_dir"
-							export FORCE_SYNC="$force_sync"
-							export MIGRATE_ARCHIVE_STATUS="$migrate_archive"
-							export MIGRATE_FORKS="$migrate_fork"
-							export VISIBILITY="$visibility"
-							export SORT="$sort"
-							export SORT_DIRECTION="$direction"
-							export PUSH_MIRROR_INTERVAL="8h"
-							export PUSH_MIRROR_SYNC_ON_COMMIT="Yes"
-							bash github-forgejo-migrate.sh
-						done
-					done
-					done
-				done
-			done
-			done
-	done
-done
-
-echo "================================================================"
-echo "Running one final REAL migration with default options..."
-export DRY_RUN="No"
-export STRATEGY="mirror"
-export FORCE_SYNC="No"
-export MIGRATE_ARCHIVE_STATUS="Yes"
-export MIGRATE_FORKS="Yes"
-export VISIBILITY="both"
-export SORT="pushed"
-export SORT_DIRECTION="desc"
-export MIRROR_DIRECTION="pull"
-export PUSH_MIRROR_INTERVAL="8h"
-export PUSH_MIRROR_SYNC_ON_COMMIT="Yes"
-bash github-forgejo-migrate.sh
-
-echo "--------------------------------------------------"
-echo "Migration script finished."
-echo "You can check the results at $FORGEJO_URL"
 
 echo ""
-read -r -p "Do you want to stop and remove the test container? (y/N): " cleanup
-if [[ "$cleanup" =~ ^[yY]$ ]]; then
-	echo "Cleaning up..."
-	docker rm -f "$CONTAINER_NAME"
-	echo "Done."
-else
-	echo "Keeping container running."
-	echo "To clean up later, run: docker rm -f $CONTAINER_NAME"
-fi
+echo "=== E2E: strategy ==="
+bats test/strategy.bats
+
+echo ""
+echo "=== E2E: visibility ==="
+bats test/visibility.bats
+
+echo ""
+echo "=== E2E: options ==="
+bats test/options.bats
+
+echo ""
+echo "=== All tests passed ==="

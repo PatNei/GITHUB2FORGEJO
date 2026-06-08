@@ -6,5 +6,12 @@
 
 # Allow specific file types in root directory
 !*.sh
+!*.bash
 !README.md
+!LICENSE
 !.envrc.example
+
+# Allow test directory (bats tests + helpers)
+!test/
+!test/**.bats
+!test/**.bash
