@@ -326,68 +326,65 @@ fi
 # 1. Fetch GitHub Repositories via API (paginated)
 # -------------------------
 all_repos="[]" # will hold a JSON array of repos
-page=1
-
-# Determine API endpoint and headers once
-repo_base_url="https://api.github.com/users/$GITHUB_USER/repos"
 curl_opts=()
-
-# Use authenticated user endpoint if token exists (and not overridden by Org)
 if [ -n "$GITHUB_TOKEN" ]; then
 	curl_opts+=(-H "Authorization: token $GITHUB_TOKEN")
-	repo_base_url="https://api.github.com/user/repos"
 fi
 
-# If Organization, force Org endpoint
+# /user/repos contains the token owner's affiliations, not every public repo
+# owned by another user. Include that user's public listing as well. Org
+# listings already include private repos accessible with the token.
 if $GITHUB_IS_ORG; then
-	repo_base_url="https://api.github.com/orgs/$GITHUB_USER/repos"
+	repo_endpoints=("https://api.github.com/orgs/$GITHUB_USER/repos")
+else
+	repo_endpoints=()
+	if [ -n "$GITHUB_TOKEN" ]; then
+		repo_endpoints+=("https://api.github.com/user/repos")
+	fi
+	repo_endpoints+=("https://api.github.com/users/$GITHUB_USER/repos")
 fi
 
-# Build the visibility query parameter for the GitHub API.
-# The API supports type=public, type=private, or type=all on repo listing endpoints.
-visibility_param=""
-if [[ "$VISIBILITY" == "public" ]]; then
-	visibility_param="&type=public"
-elif [[ "$VISIBILITY" == "private" ]]; then
-	visibility_param="&type=private"
-fi
+for repo_base_url in "${repo_endpoints[@]}"; do
+	page=1
+	while true; do
+		# /users/{user}/repos does not accept type=private; filter visibility
+		# locally for all endpoints instead of relying on endpoint-specific types.
+		response=$(safe_curl "${curl_opts[@]}" "${repo_base_url}?per_page=100&page=${page}&sort=${SORT}&direction=${SORT_DIRECTION}") || {
+			echo -e "${red}Failed to fetch GitHub repositories. Check network connectivity.${reset}" >&2
+			exit 1
+		}
 
-while true; do
-	response=$(safe_curl "${curl_opts[@]}" "${repo_base_url}?per_page=100&page=${page}${visibility_param}&sort=${SORT}&direction=${SORT_DIRECTION}") || {
-		echo -e "${red}Failed to fetch GitHub repositories. Check network connectivity.${reset}" >&2
-		exit 1
-	}
+		if echo "$response" | jq -e 'if type == "object" and .message then true else false end' >/dev/null; then
+			err_msg=$(echo "$response" | jq -r '.message')
+			echo -e "${red}GitHub API Error: $err_msg${reset}" >&2
+			exit 1
+		fi
 
-	# Check for API error messages
-	if echo "$response" | jq -e 'if type == "object" and .message then true else false end' >/dev/null; then
-		err_msg=$(echo "$response" | jq -r '.message')
-		echo -e "${red}GitHub API Error: $err_msg${reset}" >&2
-		exit 1
-	fi
+		total_count=$(echo "$response" | jq 'if type == "array" then length else 0 end')
+		if [ "$total_count" -eq 0 ]; then
+			break
+		fi
 
-	# Get total count of repos returned by the API (before filtering).
-	total_count=$(echo "$response" | jq 'if type == "array" then length else 0 end')
+		filtered=$(echo "$response" | jq --arg gu "$GITHUB_USER" --arg visibility "$VISIBILITY" '[.[] | select((.owner.login | ascii_downcase) == ($gu | ascii_downcase)) | select($visibility == "both" or (.private == ($visibility == "private")))]')
+		# Keep the first occurrence, preserving API order when endpoints overlap.
+		all_repos=$(echo "$all_repos" "$filtered" | jq -s 'add | reduce .[] as $repo ([]; if any(.[]; .id == $repo.id) then . else . + [$repo] end)')
 
-	# If the API returned no repos at all, we're done paginating.
-	if [ "$total_count" -eq 0 ]; then
-		break
-	fi
-
-	# Filter repos so that only those whose owner.login matches GITHUB_USER are selected.
-	filtered=$(echo "$response" | jq --arg gu "$GITHUB_USER" 'if type == "array" then [.[] | select(.owner.login == $gu)] else [] end')
-	filtered_count=$(echo "$filtered" | jq 'length')
-
-	# Merge matching repos with the existing JSON array (if any matched).
-	if [ "$filtered_count" -gt 0 ]; then
-		all_repos=$(echo "$all_repos" "$filtered" | jq -s 'add')
-	fi
-
-	# If we received less than 100 repos from the API, we've reached the last page.
-	if [ "$total_count" -lt 100 ]; then
-		break
-	fi
-	page=$((page + 1))
+		if [ "$total_count" -lt 100 ]; then
+			break
+		fi
+		page=$((page + 1))
+	done
 done
+
+# Each endpoint is sorted independently; restore the requested order after
+# combining results from both user listings.
+if [ "${#repo_endpoints[@]}" -gt 1 ]; then
+	sort_key="${SORT}_at"
+	if [ "$SORT" = "full_name" ]; then
+		sort_key=full_name
+	fi
+	all_repos=$(echo "$all_repos" | jq --arg key "$sort_key" --arg direction "$SORT_DIRECTION" 'sort_by(.[$key] // "") | if $direction == "desc" then reverse else . end')
+fi
 
 # -------------------------
 # 2. (Optional) Force sync: Delete Forgejo repos that are mirrored but no longer exist on GitHub.
